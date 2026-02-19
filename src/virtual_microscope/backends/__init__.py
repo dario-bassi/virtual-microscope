@@ -1,0 +1,49 @@
+"""Backend registry — auto-discovers installed backends.
+
+Each backend is a subdirectory with an __init__.py exposing:
+  - create_sim(**params) -> SomeSimClass
+  - setup_<name>_microscope(**params) -> (core, sim)
+
+Programmatic use:
+    from virtual_microscope.backends import load_backend, list_backends
+    core, sim = load_backend("bacteria", n_cells=50, seed=0)
+    print(list_backends())
+"""
+
+from __future__ import annotations
+from pathlib import Path
+
+
+def list_backends() -> list[str]:
+    """Return sorted list of available backend names."""
+    d = Path(__file__).parent
+    return sorted(
+        p.name for p in d.iterdir()
+        if p.is_dir() and (p / "__init__.py").exists() and not p.name.startswith("_")
+    )
+
+
+def load_backend(name: str, **kwargs):
+    """Load a backend by name and call its setup function.
+
+    Args:
+        name: Backend name (e.g. "bacteria", "voronoi", "zebrafish")
+        **kwargs: Forwarded to the backend's setup_<name>_microscope() function.
+
+    Returns:
+        (core, sim) tuple — or just core for the particle backend.
+    """
+    import importlib
+    mod = importlib.import_module(f"virtual_microscope.backends.{name}")
+    # Try setup_<name>_microscope first, then setup_<name>
+    fn_name = f"setup_{name}_microscope"
+    fn = getattr(mod, fn_name, None)
+    if fn is None:
+        fn_name = f"setup_{name}"
+        fn = getattr(mod, fn_name, None)
+    if fn is None:
+        raise AttributeError(
+            f"Backend '{name}' has no setup function (tried "
+            f"setup_{name}_microscope and setup_{name})"
+        )
+    return fn(**kwargs)

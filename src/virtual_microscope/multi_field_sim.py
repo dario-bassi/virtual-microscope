@@ -114,6 +114,67 @@ class MultiFieldBridge(SimulationBridge):
             local_y - self._BASE_HALF,
         ])
 
+    # ── Realtime dynamics support ───────────────────────────────────────────
+
+    @property
+    def auto_step(self):
+        return False
+
+    @auto_step.setter
+    def auto_step(self, value):
+        for sim in self._field_list:
+            sim.auto_step = value
+
+    @property
+    def fixed_dt(self):
+        return 0.0
+
+    @fixed_dt.setter
+    def fixed_dt(self, value):
+        for sim in self._field_list:
+            if hasattr(sim, 'fixed_dt'):
+                sim.fixed_dt = value
+
+    def step(self, dt: float = 1.0) -> None:
+        """Step ALL field simulations (not just active) so non-viewed wells
+        continue evolving while the agent looks elsewhere."""
+        for sim in self._field_list:
+            sim.step(dt)
+
+    def step_autonomous(self, dt: float = 1.0) -> None:
+        """Autonomous step for all fields (skips SLM effects)."""
+        for sim in self._field_list:
+            if hasattr(sim, 'step_autonomous'):
+                sim.step_autonomous(dt)
+            else:
+                sim.step(dt)
+
+    def snap_frame(self, *args, **kwargs):
+        """Delegate to the active field's snap_frame.
+
+        This method exists so RealtimeEngine can patch it with a lock,
+        and snap() routes through it (keeping rendering thread-safe
+        across field switches).
+        """
+        return self._sim.snap_frame(*args, **kwargs)
+
+    def snap(self, exposure: float, brightness: float, gain: float = 1.0,
+             **kwargs) -> np.ndarray:
+        """Override parent snap() to route through our snap_frame().
+
+        This ensures the RealtimeEngine's lock (patched onto self.snap_frame)
+        protects rendering even after field switches.
+        """
+        mask = self.get_slm_mask()
+        img = self.snap_frame(mask=mask, exposure=exposure,
+                              intensity=brightness, **kwargs)
+        if gain != 1.0:
+            img = np.clip(img.astype(np.float32) * gain, 0, 255).astype(
+                np.uint8)
+        return img
+
+    # ── Ground truth ─────────────────────────────────────────────────────
+
     def get_all_ground_truth(self) -> list:
         """Get ground truth from all fields."""
         results = []

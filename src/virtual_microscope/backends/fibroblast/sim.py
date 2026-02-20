@@ -274,6 +274,17 @@ class FibroblastSim:
             lamellipodium_extent = self.rng.uniform(8, 20) if has_lamellipodium else 0
             lamellipodium_side = self.rng.choice([-1, 1])  # which end
 
+            # Filopodia: thin finger-like protrusions from lamellipodium
+            filopodia = []
+            if has_lamellipodium:
+                n_filo = self.rng.integers(3, 8)
+                for _ in range(n_filo):
+                    filopodia.append({
+                        "angle_offset": self.rng.uniform(-0.35, 0.35),
+                        "length": self.rng.uniform(5, 15),
+                        "curvature": self.rng.uniform(-0.02, 0.02),
+                    })
+
             cell = {
                 "cx": cx, "cy": cy, "angle": angle,
                 "length": length, "width": width,
@@ -285,6 +296,7 @@ class FibroblastSim:
                 "has_lamellipodium": has_lamellipodium,
                 "lamellipodium_extent": lamellipodium_extent,
                 "lamellipodium_side": lamellipodium_side,
+                "filopodia": filopodia,
                 "nuc_brightness": self.rng.uniform(180, 240),
             }
             self._cells.append(cell)
@@ -635,7 +647,12 @@ class FibroblastSim:
         return (nuc_cx, nuc_cy), nuc_axes
 
     def _draw_stress_fiber(self, img, cell, fiber, brightness_mult=1.0):
-        """Draw a single stress fiber as a bright line."""
+        """Draw a single stress fiber with periodic α-actinin banding.
+
+        Real stress fibers show periodic bright spots at ~2µm spacing
+        (Z-lines / α-actinin dense bodies), giving them a granular
+        appearance at 40x+.
+        """
         total_angle = cell["angle"] + fiber["angle_dev"]
         ca = math.cos(total_angle)
         sa = math.sin(total_angle)
@@ -657,9 +674,26 @@ class FibroblastSim:
             return  # fiber effectively invisible
         thickness = max(1, self._s(fiber["width"]))
 
+        # Base fiber line (slightly dimmer to let bands pop)
+        base_b = int(brightness * 0.75)
         cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)),
-                 (brightness, brightness, brightness), thickness,
+                 (base_b, base_b, base_b), thickness,
                  lineType=cv2.LINE_AA)
+
+        # Periodic α-actinin banding (~2µm spacing in world coords)
+        fiber_len = math.hypot(x2 - x1, y2 - y1)
+        band_period = self._sf(2.0)  # 2µm period in internal pixels
+        if fiber_len > band_period * 1.5 and brightness >= 30:
+            n_bands = max(1, int(fiber_len / band_period))
+            for i in range(n_bands):
+                f = (i + 0.5) / n_bands
+                bx = x1 + f * (x2 - x1)
+                by = y1 + f * (y2 - y1)
+                spot_b = min(255, int(brightness * 1.15))
+                spot_r = max(1, thickness * 2 // 3)
+                cv2.circle(img, (int(bx), int(by)), spot_r,
+                           (spot_b, spot_b, spot_b), -1,
+                           lineType=cv2.LINE_AA)
 
     def _draw_stress_fiber_bf(self, img, cell, fiber):
         """Draw a stress fiber in BF as a subtle dark line.
@@ -753,7 +787,13 @@ class FibroblastSim:
                        lineType=cv2.LINE_AA)
 
     def _draw_lamellipodium_bf(self, img, cell):
-        """Draw lamellipodium in BF — very thin, nearly transparent fan."""
+        """Draw lamellipodium in BF — thin phase object with ruffled edge.
+
+        Real lamellipodia in phase contrast show:
+        - Very thin sheet (nearly transparent)
+        - Ruffled membrane at leading edge (bright/dark fringe)
+        - Filopodia extending as thin dark hair-like protrusions
+        """
         side = cell["lamellipodium_side"]
         extent = cell["lamellipodium_extent"]
 
@@ -779,8 +819,36 @@ class FibroblastSim:
             alpha = 0.25
             cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
 
+            # Ruffled leading edge: undulating bright fringe at the tip
+            n_ruffle = 12
+            ruffle_pts = []
+            for i in range(n_ruffle):
+                frac = i / (n_ruffle - 1)
+                lat = half_w * 0.5 * (2 * frac - 1)
+                # Undulating distance from base
+                ruffle_d = extent * (0.85 + 0.15 *
+                                     math.sin(frac * 3 * math.pi))
+                t = base_t + side * ruffle_d
+                x, y = self._cell_to_internal(cell, t, lat)
+                ruffle_pts.append([int(x), int(y)])
+            if len(ruffle_pts) >= 2:
+                pts_arr = np.array(ruffle_pts, dtype=np.int32)
+                # Bright fringe (phase halo at thin edge)
+                cv2.polylines(img, [pts_arr], False, (175, 175, 175),
+                              max(1, self._s(0.8)), lineType=cv2.LINE_AA)
+
+        # Filopodia: thin dark protrusions extending from lamellipodium
+        self._draw_filopodia_bf(img, cell)
+
     def _draw_lamellipodium_actin(self, img, cell):
-        """Draw lamellipodium in actin channel (bright diffuse region)."""
+        """Draw lamellipodium in actin channel — branched actin meshwork.
+
+        Real phalloidin-stained lamellipodia show:
+        - Dense granular fluorescence (Arp2/3-branched meshwork)
+        - Brighter leading edge band (nascent actin polymerization)
+        - Radial filament fans extending from the cell body
+        - Filopodia as thin bright lines beyond the edge
+        """
         side = cell["lamellipodium_side"]
         extent = cell["lamellipodium_extent"]
         s = self.internal_scale
@@ -800,16 +868,100 @@ class FibroblastSim:
 
         if len(pts) >= 3:
             hull = cv2.convexHull(np.array(pts, dtype=np.int32))
+
+            # Base diffuse fill (dimmer than before — let structure pop)
             mask = np.zeros((self._ih, self._iw), dtype=np.uint8)
             cv2.fillConvexPoly(mask, hull, 255)
             blur_k = max(3, s * 9) | 1
-            mask = cv2.GaussianBlur(mask, (blur_k, blur_k), 3 * s)
-            brightness = 80
+            mask_blur = cv2.GaussianBlur(mask, (blur_k, blur_k), 3 * s)
+            brightness = 55  # dimmer base, structure adds the rest
             for c in range(3):
                 img[:, :, c] = np.clip(
-                    img[:, :, c].astype(float) + mask * (brightness / 255.0),
+                    img[:, :, c].astype(float) + mask_blur * (brightness / 255.0),
                     0, 255
                 ).astype(np.uint8)
+
+            # Bright leading edge band (nascent actin, brightest region)
+            n_edge = 16
+            edge_pts = []
+            for i in range(n_edge):
+                frac = i / (n_edge - 1)
+                lat = half_w * 0.6 * (2 * frac - 1)
+                t = tip_t - side * extent * 0.1  # just behind the edge
+                x, y = self._cell_to_internal(cell, t, lat)
+                edge_pts.append([int(x), int(y)])
+            if len(edge_pts) >= 2:
+                pts_arr = np.array(edge_pts, dtype=np.int32)
+                cv2.polylines(img, [pts_arr], False, (130, 130, 130),
+                              max(2, self._s(1.5)), lineType=cv2.LINE_AA)
+
+            # Radial actin filament fans (branching meshwork texture)
+            n_rays = self._noise_rng.integers(8, 15)
+            for _ in range(n_rays):
+                # Start at base, extend toward tip
+                lat = self._noise_rng.uniform(-half_w * 0.5, half_w * 0.5)
+                ray_frac = self._noise_rng.uniform(0.4, 0.95)
+                t_start = base_t
+                t_end = base_t + side * extent * ray_frac
+                x1, y1 = self._cell_to_internal(cell, t_start, lat)
+                # Fan out slightly
+                lat_end = lat + self._noise_rng.uniform(-3, 3)
+                x2, y2 = self._cell_to_internal(cell, t_end, lat_end)
+                ray_b = int(self._noise_rng.uniform(50, 90))
+                cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)),
+                         (ray_b, ray_b, ray_b), max(1, self._s(0.5)),
+                         lineType=cv2.LINE_AA)
+
+        # Filopodia in actin channel: thin bright lines
+        self._draw_filopodia_actin(img, cell)
+
+    def _draw_filopodia_bf(self, img, cell):
+        """Draw filopodia in BF as thin dark hair-like protrusions."""
+        if not cell.get("filopodia"):
+            return
+        side = cell["lamellipodium_side"]
+        extent = cell["lamellipodium_extent"]
+        base_t = side * cell["length"] / 2 + side * extent
+
+        for filo in cell["filopodia"]:
+            # Start from the lamellipodium edge
+            filo_angle = cell["angle"] + filo["angle_offset"] * side
+            filo_len = filo["length"]
+            x1, y1 = self._cell_to_internal(cell, base_t, 0)
+            # Offset start position laterally based on angle_offset
+            lat_off = filo["angle_offset"] * cell["width"] * 0.5
+            x1, y1 = self._cell_to_internal(cell, base_t, lat_off)
+            # End point extends outward
+            ca = math.cos(filo_angle)
+            sa = math.sin(filo_angle)
+            x2 = x1 + self._sf(side * filo_len * ca)
+            y2 = y1 + self._sf(side * filo_len * sa)
+            # Thin dark line (phase contrast: thin protrusion is dark)
+            cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)),
+                     (75, 75, 75), max(1, self._s(0.4)),
+                     lineType=cv2.LINE_AA)
+
+    def _draw_filopodia_actin(self, img, cell):
+        """Draw filopodia in actin channel as thin bright lines."""
+        if not cell.get("filopodia"):
+            return
+        side = cell["lamellipodium_side"]
+        extent = cell["lamellipodium_extent"]
+        base_t = side * cell["length"] / 2 + side * extent
+
+        for filo in cell["filopodia"]:
+            filo_angle = cell["angle"] + filo["angle_offset"] * side
+            filo_len = filo["length"]
+            lat_off = filo["angle_offset"] * cell["width"] * 0.5
+            x1, y1 = self._cell_to_internal(cell, base_t, lat_off)
+            ca = math.cos(filo_angle)
+            sa = math.sin(filo_angle)
+            x2 = x1 + self._sf(side * filo_len * ca)
+            y2 = y1 + self._sf(side * filo_len * sa)
+            # Bright thin line (F-actin bundle inside filopodium)
+            cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)),
+                     (120, 120, 120), max(1, self._s(0.5)),
+                     lineType=cv2.LINE_AA)
 
     # ----------------------------------------------------------------
     # SimulationBridge interface

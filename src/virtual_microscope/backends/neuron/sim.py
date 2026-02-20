@@ -285,15 +285,17 @@ class NeuronSim:
             nx = np.clip(nx, 2, self.width - 2)
             ny = np.clip(ny, 2, self.height - 2)
 
+            # Subtle varicosities: random thickness modulation ±15%
+            seg_width = max(0.5, width * rng.uniform(0.85, 1.15))
             neuron["segments"].append(
-                (cx, cy, nx, ny, max(0.5, width), True))
+                (cx, cy, nx, ny, seg_width, True))
             remaining -= seg
 
             # Branch?
             if remaining > 15 and rng.random() < branch_prob:
                 neuron["branch_points"].append((nx, ny))
                 # Branch off
-                branch_angle = angle + rng.choice([-1, 1]) * rng.uniform(0.3, 0.8)
+                branch_angle = angle + rng.choice([-1, 1]) * rng.uniform(0.3, 1.3)
                 self._grow_dendrite(
                     neuron, nx, ny, branch_angle,
                     length=remaining * rng.uniform(0.4, 0.7),
@@ -662,7 +664,7 @@ class NeuronSim:
                     midy = (y0 + y1) / 2
                     dist = np.hypot(midx - neuron["soma_x"],
                                     midy - neuron["soma_y"])
-                    prox_frac = max(0.4, 1.0 - dist / 150.0)
+                    prox_frac = max(0.15, 1.0 - dist / 120.0)
                     brightness = (140.0 + 60.0 * min(w / 2.5, 1.0)) * prox_frac
                     cv2.line(img, (self._s(x0), self._s(y0)),
                              (self._s(x1), self._s(y1)),
@@ -693,9 +695,25 @@ class NeuronSim:
                 brightness = 160.0 if stype == "mushroom" else 110.0
                 cv2.circle(img, (ix, iy), ir, brightness, -1, cv2.LINE_AA)
 
+        # Dead cell debris: bright round pyknotic cells (common in culture)
+        rng_debris = np.random.default_rng(self._seed + 888)
+        n_dead = rng_debris.integers(2, 6)
+        for _ in range(n_dead):
+            dx = rng_debris.integers(10 * s, self._iw - 10 * s)
+            dy = rng_debris.integers(10 * s, self._ih - 10 * s)
+            dr = rng_debris.integers(3 * s, 7 * s)
+            cv2.circle(img, (int(dx), int(dy)), int(dr),
+                       rng_debris.uniform(80, 180), -1, cv2.LINE_AA)
+
         # Out-of-focus haze from neuropil in other Z-planes
         haze = cv2.GaussianBlur(img, (0, 0), 6.0 * s)
-        img = np.clip(img + haze * 0.08, 0, 255)
+        img = np.clip(img + haze * 0.20, 0, 255)
+
+        # Subtle autofluorescence background texture (culture substrate)
+        rng_bg = np.random.default_rng(self._seed + 777)
+        bg_noise = rng_bg.normal(0, 2.0, size=img.shape).astype(np.float32)
+        bg_noise = cv2.GaussianBlur(bg_noise, (0, 0), 3.0 * s)
+        img = np.clip(img + bg_noise, 0, 255)
 
         return img.astype(np.uint8)
 

@@ -54,6 +54,7 @@ class DictyosteliumSim:
         # cAMP field (for visualization + gradient computation)
         camp_diffusion: float = 15.0,   # field diffusion coefficient
         camp_decay: float = 0.03,       # field decay rate per step
+        camp_reporter_gain: float = 1.0,  # multiplier for cAMP reporter brightness
     ):
         self.width = world_size
         self.height = world_size
@@ -141,6 +142,7 @@ class DictyosteliumSim:
         self._camp = np.zeros((self._fh, self._fw), dtype=np.float64)
         self._camp_diffusion = camp_diffusion
         self._camp_decay = camp_decay
+        self._camp_reporter_gain = camp_reporter_gain
 
         # ── Mound tracking ──
         self._mound_centers = []
@@ -898,7 +900,7 @@ class DictyosteliumSim:
         cAMP-GFP or Flamindo2 reporter shows the field as fluorescence.
         Background has low autofluorescence noise.
         """
-        field_norm = np.clip(self._camp / 8.0, 0, 1.0)
+        field_norm = np.clip(self._camp * self._camp_reporter_gain / 8.0, 0, 1.0)
         field_8bit = (field_norm * 220).astype(np.float32)
         img = cv2.resize(field_8bit, (self._iw, self._ih),
                          interpolation=cv2.INTER_LINEAR)

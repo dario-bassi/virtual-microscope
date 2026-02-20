@@ -807,6 +807,20 @@ class OrganoidSim:
             effective_dark = thickness * 42 * shade_off_cap
             img = np.where(inside, 178 - effective_dark, img)
 
+        # Apical brush border (microvilli haze) — thin dark+textured band
+        # along the inner wall edge (lumen-facing). Intestinal epithelium
+        # has dense microvilli creating a fuzzy absorptive appearance.
+        if r_in_base > 2:
+            brush_w = max(1.5, self._sf(2.5))  # ~2.5 world px band
+            apical_zone = ((dist >= r_in_int) &
+                           (dist < r_in_int + brush_w) & in_wall)
+            # High-frequency noise for fuzzy texture
+            rng_brush = np.random.default_rng(self._seed + 8888)
+            brush_noise = rng_brush.normal(0, 1, (ih, iw)).astype(np.float32)
+            brush_noise = cv2.GaussianBlur(brush_noise, (0, 0), sigmaX=0.8)
+            # Slightly darker baseline + texture
+            img = np.where(apical_zone, img - 8 + brush_noise * 3.0, img)
+
         # Phase contrast halos (outer boundary)
         halo_w = max(1.5, 3.0 * s)
         ring_bright = ((dist >= r_out_int - s * 0.5) &

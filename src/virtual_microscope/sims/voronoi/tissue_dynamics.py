@@ -550,6 +550,22 @@ class DynamicVoronoiSim(VoronoiSim):
         """Set whether translocation-inducing drug is active."""
         self._transloc_drug_active = active
 
+    def _sync_perfusion_drug_state(self):
+        """Sync drug-dependent reporters with Perfusion device state.
+
+        Called once per step() to couple Perfusion state 4 ("Drug") to
+        translocation and stress granule activation. This avoids requiring
+        manual snap_frame hooks in challenge scenarios.
+        """
+        perf = self.state_devices.get("Perfusion", {})
+        if not isinstance(perf, dict):
+            return
+        drug_on = str(perf.get("state", "0")) == "4"
+        if self._transloc_enabled:
+            self._transloc_drug_active = drug_on
+        if hasattr(self, '_sg_stress_active'):
+            self._sg_stress_active = drug_on
+
     def _apply_translocation(self, dt: float = 1.0):
         """Update nuclear fraction based on drug state."""
         if not self._transloc_enabled:
@@ -2103,6 +2119,9 @@ class DynamicVoronoiSim(VoronoiSim):
         # SLM-driven laser ablation (cell killing + wound healing)
         self._apply_laser_ablation()
 
+        # Auto-couple Perfusion device to drug-dependent reporters
+        self._sync_perfusion_drug_state()
+
         # Drug-induced nuclear translocation (NF-kB, etc.)
         self._apply_translocation(effective_dt)
 
@@ -2154,6 +2173,9 @@ class DynamicVoronoiSim(VoronoiSim):
 
         # Skip _apply_gene_induction() and _apply_photoconversion()
         # — those are observation-coupled (SLM mask)
+
+        # Auto-couple Perfusion device to drug-dependent reporters
+        self._sync_perfusion_drug_state()
 
         # Translocation is drug-coupled (not SLM), so advance it
         self._apply_translocation(effective_dt)

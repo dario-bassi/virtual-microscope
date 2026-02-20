@@ -99,6 +99,7 @@ class BloodSmearSim:
         n_platelets: int = 20,
         wbc_differential: dict = None,
         abnormal_rbc: dict = None,
+        rouleaux_fraction: float = 0.0,
         seed: int = 42,
         fixed_dt: float = 0.0,
         internal_scale: int = 4,
@@ -147,6 +148,7 @@ class BloodSmearSim:
 
         # Abnormal RBC morphology: {"sickle": 0.05, "target": 0.03, "spherocyte": 0.02}
         self._abnormal_rbc = abnormal_rbc or {}
+        self._rouleaux_fraction = rouleaux_fraction
 
         # RGB camera mode (Wright-Giemsa staining is color)
         self.rgb_mode = True
@@ -190,11 +192,6 @@ class BloodSmearSim:
         self._rbc_x = np.clip(self._rbc_x, margin, self.width - margin)
         self._rbc_y = np.clip(self._rbc_y, margin, self.height - margin)
         self._rbc_radius = self.rng.normal(3.5, 0.4, self.n_rbc).clip(2.5, 5.0)
-        # Some RBCs slightly overlap (rouleaux tendency)
-        self._rbc_overlap_group = self.rng.integers(
-            0, max(1, self.n_rbc // 8), self.n_rbc
-        )
-
         # Assign RBC morphologies
         self._rbc_morph = ["normal"] * self.n_rbc
         for morph, frac in self._abnormal_rbc.items():
@@ -212,6 +209,13 @@ class BloodSmearSim:
         for i in range(self.n_rbc):
             if self._rbc_morph[i] == "spherocyte":
                 self._rbc_radius[i] *= 0.65
+
+        # Rouleaux: stacks of RBCs resembling coins stacked on edge.
+        # Must be after morphology assignment (only normal RBCs form stacks).
+        self._rbc_in_rouleaux = np.zeros(self.n_rbc, dtype=bool)
+        self._rouleaux_stacks = []
+        if self._rouleaux_fraction > 0:
+            self._form_rouleaux(margin)
 
         # -- WBCs --
         wbc_types = []
@@ -250,6 +254,80 @@ class BloodSmearSim:
                 ci = self.rng.integers(0, n_clusters)
                 self._plt_x[i] = cluster_cx[ci] + self.rng.normal(0, 3)
                 self._plt_y[i] = cluster_cy[ci] + self.rng.normal(0, 3)
+
+    def _form_rouleaux(self, margin: int):
+        """Arrange a fraction of RBCs into linear rouleaux stacks.
+
+        Rouleaux are columns of RBCs stacked like coins. They form when
+        elevated plasma proteins (fibrinogen, immunoglobulins) make RBCs
+        sticky. In the smear, they appear as overlapping chains.
+
+        Each stack: 3-7 cells, linear arrangement, ~40% diameter overlap.
+        """
+        n_in_rouleaux = int(self.n_rbc * self._rouleaux_fraction)
+        if n_in_rouleaux < 3:
+            return
+
+        # Only recruit normal-morphology RBCs (sickle/spherocyte don't stack)
+        normal_idx = [i for i in range(self.n_rbc)
+                      if self._rbc_morph[i] == "normal"]
+        n_available = min(n_in_rouleaux, len(normal_idx))
+        recruited = self.rng.choice(normal_idx, n_available, replace=False)
+
+        # Partition into stacks of 3-7 cells
+        stacks = []
+        ptr = 0
+        while ptr < len(recruited):
+            remaining = len(recruited) - ptr
+            if remaining < 3:
+                break
+            size = min(remaining, int(self.rng.integers(3, 8)))
+            stacks.append(recruited[ptr:ptr + size].tolist())
+            ptr += size
+
+        # Arrange each stack as a linear chain
+        for stack_idx in stacks:
+            n = len(stack_idx)
+            # Stack center: use the first cell's position as anchor
+            anchor = stack_idx[0]
+            cx = self._rbc_x[anchor]
+            cy = self._rbc_y[anchor]
+
+            # Random stack orientation
+            angle = self.rng.uniform(0, np.pi)
+            ca, sa = np.cos(angle), np.sin(angle)
+
+            # Overlap: cells spaced at 60% of diameter apart
+            mean_r = float(np.mean(self._rbc_radius[stack_idx]))
+            spacing = mean_r * 2 * 0.60  # 40% overlap between adjacent
+
+            # Slight curvature (undulating stacks)
+            curvature = self.rng.uniform(-0.03, 0.03)
+
+            for j, cell_idx in enumerate(stack_idx):
+                # Position along the stack
+                offset = (j - (n - 1) / 2.0) * spacing
+                # Slight lateral wobble for naturalism
+                lat = self.rng.normal(0, 0.3)
+                # Curvature: quadratic bend
+                frac = j / max(1, n - 1) * 2 - 1  # -1 to 1
+                lat += curvature * offset * offset * 0.1
+
+                new_x = cx + offset * ca - lat * sa
+                new_y = cy + offset * sa + lat * ca
+                new_x = np.clip(new_x, margin, self.width - margin)
+                new_y = np.clip(new_y, margin, self.height - margin)
+
+                self._rbc_x[cell_idx] = new_x
+                self._rbc_y[cell_idx] = new_y
+                self._rbc_in_rouleaux[cell_idx] = True
+
+            self._rouleaux_stacks.append({
+                "indices": stack_idx,
+                "center": (cx, cy),
+                "angle_deg": float(np.degrees(angle)),
+                "n_cells": n,
+            })
 
     def _render_full(self):
         """Pre-render full-resolution images for all channels."""
@@ -881,7 +959,7 @@ class BloodSmearSim:
         for morph in self._rbc_morph:
             rbc_morphology[morph] = rbc_morphology.get(morph, 0) + 1
 
-        return {
+        gt = {
             "n_rbc": self.n_rbc,
             "n_wbc": self.n_wbc,
             "n_platelets": self.n_platelets,
@@ -890,6 +968,11 @@ class BloodSmearSim:
             "wbc_types": list(set(self._wbc_types)),
             "rbc_morphology": rbc_morphology,
         }
+        if self._rouleaux_stacks:
+            gt["n_rouleaux_stacks"] = len(self._rouleaux_stacks)
+            gt["n_rbc_in_rouleaux"] = int(np.sum(self._rbc_in_rouleaux))
+            gt["rouleaux_stacks"] = self._rouleaux_stacks
+        return gt
 
     # -- Convenience --
 

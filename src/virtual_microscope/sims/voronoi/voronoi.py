@@ -133,6 +133,13 @@ class VoronoiSim:
         self._extra_channels = {}
         self._next_mode = 3  # modes 0,1,2 are BF/nuc/mem
 
+        # Data-driven channel→mode mapping (filter_label, led_label) → mode_id
+        # Subclasses / enable_*() can override this dict.
+        self._mode_map = {
+            ("SCFP2(434/474)", "UV"): 1,           # DAPI
+            ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
+        }
+
         # Pre-render full tissue images for each mode (cache for performance)
         self._bf_full = None
         self._nuc_full = None
@@ -1160,24 +1167,22 @@ class VoronoiSim:
         return crop
 
     def _update_mode(self):
-        """Update rendering mode from state devices."""
+        """Update rendering mode from state devices via _mode_map lookup."""
         if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
             self.mode = 0
             return
         filter_label = self.state_devices["Filter Wheel"]["label"]
         led_label = self.state_devices["LED"]["label"]
 
-        if filter_label == "mScarlet3(569/582)" and led_label == "ORANGE":
-            self.mode = 1
-        elif filter_label == "miRFP670(642/670)" and led_label == "RED":
-            self.mode = 2
-        else:
-            # Check extra channels
-            for mode_id, ch_info in self._extra_channels.items():
-                if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                    self.mode = mode_id
-                    return
-            self.mode = 0
+        key = (filter_label, led_label)
+        if key in self._mode_map:
+            self.mode = self._mode_map[key]
+            return
+        for mode_id, ch_info in self._extra_channels.items():
+            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
+                self.mode = mode_id
+                return
+        self.mode = 0
 
     def _update_objectif(self):
         """Update objective from state devices and set DOF."""

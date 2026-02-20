@@ -626,6 +626,12 @@ class DynamicVoronoiSim(VoronoiSim):
         self._fucci_enabled = True
         self._fucci_division_on_m = division_on_m
 
+        # Override _mode_map for FUCCI channels
+        self._mode_map = {
+            ("mScarlet3(569/582)", "ORANGE"): 1,  # mCherry-Cdt1
+            ("miRFP670(642/670)", "RED"): 2,      # mVenus-Geminin
+        }
+
         # Phase durations (in simulation steps)
         self._fucci_durations = {
             0: g1_duration,   # G1

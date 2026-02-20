@@ -58,7 +58,14 @@ class MicroscopeSimOptmized:
             self.cycle_manager = CellCycleManager(max_divisions=10, track_stats=True)
 
         # Add objective property
-        self.current_objectiv: int = 10 
+        self.current_objectiv: int = 10
+
+        # Data-driven channel->mode mapping (filter_label, led_label) -> mode_id
+        self._mode_map = {
+            ("SCFP2(434/474)", "UV"): 1,           # DAPI
+            ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
+        }
+        self._extra_channels = {}
 
 
     def _create_cells(self) -> List[Union[OptogeneticCell, DrugResponseCell, NormalCell, CellCycleNormal]]:
@@ -314,19 +321,22 @@ class MicroscopeSimOptmized:
 
 
     def _update_mode(self) -> None:
-        """Update rendering mode base on state devices."""
+        """Update rendering mode via _mode_map lookup."""
         if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
             self.mode = 0
-            raise ValueError("no state devices for Filter Wheel and LED!")
+            return
         filter_label = self.state_devices["Filter Wheel"]["label"]
         led_label = self.state_devices["LED"]["label"]
 
-        if filter_label == "mScarlet3(569/582)" and led_label == "ORANGE":
-            self.mode = 1 # Nucleus
-        elif filter_label == "miRFP670(642/670)" and led_label == "RED":
-            self.mode = 2 # Membrane
-        else:
-            self.mode = 0 # brightfield
+        key = (filter_label, led_label)
+        if key in self._mode_map:
+            self.mode = self._mode_map[key]
+            return
+        for mode_id, ch_info in self._extra_channels.items():
+            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
+                self.mode = mode_id
+                return
+        self.mode = 0
 
     def _update_objectif(self) -> None:
         """Update the objctiv used based on the state device."""

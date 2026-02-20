@@ -1,10 +1,9 @@
 """lysosome backend for virtual-microscope (DynamicVoronoiSim + lysosomes)."""
 
+from pathlib import Path
+
 from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim
-from virtual_microscope.simulation_bridge import SimulationBridge
-import virtual_microscope.simulation_bridge as bridge_module
-from virtual_microscope._init_standard import init_standard_devices
-from pymmcore_plus.experimental.unicore import UniMMCore
+from virtual_microscope._init_standard import load_cfg
 
 
 def create_sim(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=0.3, width=512, height=512, internal_scale=4, **kwargs) -> DynamicVoronoiSim:
@@ -24,11 +23,9 @@ def create_sim(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=
 
 
 def setup_lysosome_microscope(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=0.3, **kwargs):
-    """Programmatic setup (no .cfg needed)."""
+    """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(n_cells=n_cells, seed=seed, n_lyso_min=n_lyso_min, n_lyso_max=n_lyso_max, diffusion_rate=diffusion_rate)
-    bridge_module.GLOBAL_BRIDGE = SimulationBridge(sim)
-    core = UniMMCore()
-    init_standard_devices(core, sim)
+    core = load_cfg(sim, Path(__file__).parent / "lysosome.cfg")
     sim.enable_lysosomes(
         core=core,
         n_min=n_lyso_min,

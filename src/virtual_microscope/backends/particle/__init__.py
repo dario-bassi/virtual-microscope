@@ -1,10 +1,9 @@
 """particle backend for virtual-microscope (MicroscopeSimOptmized scattered cells)."""
 
+from pathlib import Path
+
 from virtual_microscope.core.microscope_sim_optimized import MicroscopeSimOptmized
-from virtual_microscope.simulation_bridge import SimulationBridge
-import virtual_microscope.simulation_bridge as bridge_module
-from virtual_microscope._init_standard import init_standard_devices
-from pymmcore_plus.experimental.unicore import UniMMCore
+from virtual_microscope._init_standard import load_cfg
 
 
 def create_sim(nb_cells=50, world_width=1500, world_height=1500, base_radius=20.0, rng_seed=0, **kwargs) -> MicroscopeSimOptmized:
@@ -19,9 +18,7 @@ def create_sim(nb_cells=50, world_width=1500, world_height=1500, base_radius=20.
 
 
 def setup_particle_microscope(nb_cells=50, rng_seed=0, **kwargs):
-    """Programmatic setup (no .cfg needed)."""
+    """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(nb_cells=nb_cells, rng_seed=rng_seed, **kwargs)
-    bridge_module.GLOBAL_BRIDGE = SimulationBridge(sim)
-    core = UniMMCore()
-    init_standard_devices(core, sim)
+    core = load_cfg(sim, Path(__file__).parent / "particle.cfg")
     return core, sim

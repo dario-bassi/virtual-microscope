@@ -81,6 +81,10 @@ class ReactionDiffusionSim:
         self._dof = 6.0
         self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0}
         self._extra_channels = {}
+        self._mode_map = {
+            ("TagGFP2(483/506)", "GREEN"): 1,
+            ("mScarlet3(569/582)", "ORANGE"): 2,
+        }
         self._snap_count = 0
 
         # Load preset parameters (can be overridden)
@@ -521,23 +525,24 @@ class ReactionDiffusionSim:
         return cv2.GaussianBlur(img, (0, 0), sigma)
 
     def _update_mode(self):
-        """Update rendering mode from state devices."""
+        """Update rendering mode via _mode_map lookup."""
         if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
             self.mode = 0
             return
-        filter_label = self.state_devices["Filter Wheel"]["label"]
-        led_label = self.state_devices["LED"]["label"]
+        filt = self.state_devices["Filter Wheel"]
+        led = self.state_devices["LED"]
+        filter_label = filt.get("label", filt.get("Label", ""))
+        led_label = led.get("label", led.get("Label", ""))
 
-        if filter_label == "mScarlet3(569/582)" and led_label == "ORANGE":
-            self.mode = 1
-        elif filter_label == "miRFP670(642/670)" and led_label == "RED":
-            self.mode = 2
-        else:
-            for mode_id, ch_info in self._extra_channels.items():
-                if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                    self.mode = mode_id
-                    return
-            self.mode = 0
+        key = (filter_label, led_label)
+        if key in self._mode_map:
+            self.mode = self._mode_map[key]
+            return
+        for mode_id, ch_info in self._extra_channels.items():
+            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
+                self.mode = mode_id
+                return
+        self.mode = 0
 
     def _update_objectif(self):
         """Update objective from state devices."""

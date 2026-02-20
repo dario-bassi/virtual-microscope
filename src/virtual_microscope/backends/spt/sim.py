@@ -98,6 +98,9 @@ class SPTSim:
         self._dof = 1.5
         self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0, 100: 2.0}
         self._extra_channels = {}
+        self._mode_map = {
+            ("TagGFP2(483/506)", "GREEN"): 1,
+        }
         self._snap_count = 0
         self.auto_step = False
         self.snaps_per_step = 1
@@ -239,19 +242,24 @@ class SPTSim:
                               self._noise_rng.normal(0, max(self.z_drift_noise * np.sqrt(dt), 0)))
 
     def _update_mode(self):
-        """Sync rendering mode from LED/Filter Wheel state devices.
-
-        brightfield (CYAN LED / Electra1) → mode 0
-        spt-channel (GREEN LED / TagGFP2) → mode 1
-        """
-        led = self.state_devices.get("LED", {})
-        fw = self.state_devices.get("Filter Wheel", {})
-        ll = led.get("label", led.get("Label", "")).upper()
-        fl = fw.get("label", fw.get("Label", "")).upper()
-        if "GREEN" in ll or "TAGGFP2" in fl:
-            self.mode = 1
-        else:
+        """Update rendering mode via _mode_map lookup."""
+        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
             self.mode = 0
+            return
+        filt = self.state_devices["Filter Wheel"]
+        led = self.state_devices["LED"]
+        filter_label = filt.get("label", filt.get("Label", ""))
+        led_label = led.get("label", led.get("Label", ""))
+
+        key = (filter_label, led_label)
+        if key in self._mode_map:
+            self.mode = self._mode_map[key]
+            return
+        for mode_id, ch_info in self._extra_channels.items():
+            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
+                self.mode = mode_id
+                return
+        self.mode = 0
 
     def _update_objectif(self):
         """Sync current_objectiv from state_devices."""

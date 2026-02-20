@@ -1,10 +1,9 @@
 """fish backend for virtual-microscope (DynamicVoronoiSim + FISH probes)."""
 
+from pathlib import Path
+
 from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim
-from virtual_microscope.simulation_bridge import SimulationBridge
-import virtual_microscope.simulation_bridge as bridge_module
-from virtual_microscope._init_standard import init_standard_devices
-from pymmcore_plus.experimental.unicore import UniMMCore
+from virtual_microscope._init_standard import load_cfg
 
 
 def create_sim(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, deleted_fraction=0.10, amplified_copies_range=(3, 6), width=512, height=512, internal_scale=4) -> DynamicVoronoiSim:
@@ -24,11 +23,9 @@ def create_sim(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, del
 
 
 def setup_fish_microscope(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, deleted_fraction=0.10, amplified_copies_range=(3, 6), **kwargs):
-    """Programmatic setup (no .cfg needed)."""
+    """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(n_cells=n_cells, seed=seed, locus_copies=locus_copies, amplified_fraction=amplified_fraction, deleted_fraction=deleted_fraction, amplified_copies_range=amplified_copies_range)
-    bridge_module.GLOBAL_BRIDGE = SimulationBridge(sim)
-    core = UniMMCore()
-    init_standard_devices(core, sim)
+    core = load_cfg(sim, Path(__file__).parent / "fish.cfg")
     sim.enable_fish_probes(
         core=core,
         locus_copies=locus_copies,

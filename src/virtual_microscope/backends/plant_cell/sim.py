@@ -61,6 +61,10 @@ class PlantCellSim:
         self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5, 100: 0.5}
         self._dof = 6.0
         self._extra_channels = {}
+        self._mode_map = {
+            ("SCFP2(434/474)", "UV"): 1,
+            ("Electra1(402/454)", "BLUE"): 2,
+        }
         self._snap_count = 0
 
         self.rng = np.random.default_rng(seed)
@@ -712,24 +716,24 @@ class PlantCellSim:
         return crop
 
     def _update_mode(self):
+        """Update rendering mode via _mode_map lookup."""
         if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
             self.mode = 0
             return
         filt = self.state_devices["Filter Wheel"]
         led = self.state_devices["LED"]
-        fl = filt.get("label", filt.get("Label", ""))
-        ll = led.get("label", led.get("Label", "CYAN"))
-        combined = (fl + " " + ll).upper()
-        if "MSCARLET3" in combined or "ORANGE" in combined:
-            self.mode = 1
-        elif "MIRFP670" in combined or ("RED" in combined and "DAPI" not in combined):
-            self.mode = 2
-        else:
-            for mid, ch in self._extra_channels.items():
-                if fl == ch["filter"] and ll == ch["led"]:
-                    self.mode = mid
-                    return
-            self.mode = 0
+        filter_label = filt.get("label", filt.get("Label", ""))
+        led_label = led.get("label", led.get("Label", ""))
+
+        key = (filter_label, led_label)
+        if key in self._mode_map:
+            self.mode = self._mode_map[key]
+            return
+        for mode_id, ch_info in self._extra_channels.items():
+            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
+                self.mode = mode_id
+                return
+        self.mode = 0
 
     def _update_objectif(self):
         if "Objective" not in self.state_devices:

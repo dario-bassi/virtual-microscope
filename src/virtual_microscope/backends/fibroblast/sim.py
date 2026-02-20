@@ -75,6 +75,10 @@ class FibroblastSim:
 
         # Extra channels (e.g. vinculin for focal adhesions)
         self._extra_channels = {}
+        self._mode_map = {
+            ("SCFP2(434/474)", "UV"): 1,           # DAPI
+            ("TagGFP2(483/506)", "GREEN"): 2,      # phalloidin
+        }
 
         # Drug response state
         self._drug_active = False
@@ -1034,20 +1038,24 @@ class FibroblastSim:
     # ----------------------------------------------------------------
 
     def _update_mode(self):
-        """Update rendering mode from device state."""
-        led_state = self.state_devices.get("LED", {})
-        fw_state = self.state_devices.get("Filter Wheel", {})
-        led = led_state.get("Label", led_state.get("label", "CYAN"))
-        fw = fw_state.get("Label", fw_state.get("label", ""))
-
-        if led == "CYAN" or "brightfield" in fw.lower():
+        """Update rendering mode via _mode_map lookup."""
+        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
             self.mode = 0
-        elif led == "ORANGE" or "mScarlet3" in fw:
-            self.mode = 1
-        elif led == "RED" or "miRFP670" in fw:
-            self.mode = 2
-        else:
-            self.mode = self.state_devices.get("_mode_override", 0)
+            return
+        filt = self.state_devices["Filter Wheel"]
+        led = self.state_devices["LED"]
+        filter_label = filt.get("label", filt.get("Label", ""))
+        led_label = led.get("label", led.get("Label", ""))
+
+        key = (filter_label, led_label)
+        if key in self._mode_map:
+            self.mode = self._mode_map[key]
+            return
+        for mode_id, ch_info in self._extra_channels.items():
+            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
+                self.mode = mode_id
+                return
+        self.mode = 0
 
     def _update_objectif(self):
         """Update objective from device state."""

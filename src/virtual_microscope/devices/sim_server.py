@@ -35,6 +35,12 @@ class SimServer(GenericDevice):
         bridge_module.bridge_ready.clear()
 
     def initialize(self) -> None:
+        # If the bridge is already wired (programmatic setup via load_cfg),
+        # skip sim creation — the .cfg is only being loaded for devices/channels.
+        if bridge_module.GLOBAL_BRIDGE is not None:
+            bridge_module.bridge_ready.set()
+            return
+
         backend = self.get_property_value("Backend")
         if not backend:
             raise RuntimeError("SimServer: Backend property must be set before initialize()")

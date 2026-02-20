@@ -189,6 +189,11 @@ class HistologySim:
         self.state_devices = {}
         self.current_objectiv = 10
         self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
+        self._extra_channels = {}
+        self._mode_map = {
+            ("SCFP2(434/474)", "UV"): 1,           # hematoxylin
+            ("obeYFP(514/528)", "GREEN"): 2,       # eosin
+        }
 
         # RGB camera mode — snap_frame returns (H, W, 3) uint8
         self.rgb_mode = True
@@ -1607,18 +1612,24 @@ class HistologySim:
     # -- SimulationBridge interface --
 
     def _update_mode(self):
-        """Update rendering mode from state_devices."""
-        led = self.state_devices.get("LED", {})
-        led_label = led.get("label", led.get("Label", ""))
-        fw = self.state_devices.get("Filter Wheel", {})
-        fw_label = fw.get("label", fw.get("Label", ""))
-
-        if "ORANGE" in led_label or "mScarlet3" in fw_label:
-            self.mode = 1
-        elif "RED" in led_label or "miRFP670" in fw_label:
-            self.mode = 2
-        else:
+        """Update rendering mode via _mode_map lookup."""
+        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
             self.mode = 0
+            return
+        filt = self.state_devices["Filter Wheel"]
+        led = self.state_devices["LED"]
+        filter_label = filt.get("label", filt.get("Label", ""))
+        led_label = led.get("label", led.get("Label", ""))
+
+        key = (filter_label, led_label)
+        if key in self._mode_map:
+            self.mode = self._mode_map[key]
+            return
+        for mode_id, ch_info in self._extra_channels.items():
+            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
+                self.mode = mode_id
+                return
+        self.mode = 0
 
     def _update_objectif(self):
         """Update objective magnification from state_devices."""

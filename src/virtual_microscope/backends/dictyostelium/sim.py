@@ -76,6 +76,10 @@ class DictyosteliumSim:
         self._dof = 6.0
         self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0, 100: 2.0}
         self._extra_channels = {}
+        self._mode_map = {
+            ("TagGFP2(483/506)", "GREEN"): 1,      # GFP
+            ("mScarlet3(569/582)", "ORANGE"): 2,   # cAMP-reporter
+        }
         self._snap_count = 0
 
         self.rng = np.random.default_rng(seed)
@@ -958,19 +962,24 @@ class DictyosteliumSim:
     # ── SimulationBridge interface ──
 
     def _update_mode(self):
-        led = self.state_devices.get("LED", {})
-        filt = self.state_devices.get("Filter Wheel", {})
+        """Update rendering mode via _mode_map lookup."""
+        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
+            self.mode = 0
+            return
+        filt = self.state_devices["Filter Wheel"]
+        led = self.state_devices["LED"]
+        filter_label = filt.get("label", filt.get("Label", ""))
         led_label = led.get("label", led.get("Label", ""))
-        filt_label = filt.get("label", filt.get("Label", ""))
 
-        if "CYAN" in led_label or "Electra" in filt_label:
-            self.mode = 0
-        elif "ORANGE" in led_label or "mScarlet" in filt_label:
-            self.mode = 1
-        elif "RED" in led_label or "miRFP" in filt_label:
-            self.mode = 2
-        else:
-            self.mode = 0
+        key = (filter_label, led_label)
+        if key in self._mode_map:
+            self.mode = self._mode_map[key]
+            return
+        for mode_id, ch_info in self._extra_channels.items():
+            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
+                self.mode = mode_id
+                return
+        self.mode = 0
 
     def _update_objectif(self):
         obj_state = self.state_devices.get("Objective", {})

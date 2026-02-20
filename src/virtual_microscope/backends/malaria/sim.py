@@ -47,7 +47,7 @@ class MalariaSmearSim:
     PARASITE_STAGES = {
         "ring": {
             "fraction": 0.70,        # most common in peripheral blood
-            "size_ratio": 0.40,      # ratio of RBC diameter
+            "size_ratio": 0.25,      # ~1/5 of RBC diameter (CDC guideline)
             "chromatin_dots": (1, 2), # number of chromatin dots
             "color_cyto": (160, 175, 210),     # pale blue cytoplasm
             "color_chromatin": (170, 35, 65),   # vivid red-magenta chromatin
@@ -108,6 +108,8 @@ class MalariaSmearSim:
         parasitemia: float = 0.05,
         stage_distribution: dict = None,
         multi_infection_rate: float = 0.10,
+        n_platelets: int = 0,
+        applique_rate: float = 0.35,
         seed: int = 42,
         internal_scale: int = 4,
     ):
@@ -116,6 +118,8 @@ class MalariaSmearSim:
             parasitemia: fraction of RBCs infected (0.0 to 1.0)
             stage_distribution: override default stage fractions
             multi_infection_rate: fraction of infected RBCs with 2+ parasites
+            n_platelets: number of platelet particles (small purple dots, 0=auto)
+            applique_rate: fraction of rings placed at RBC periphery (P. falciparum)
             internal_scale: render at world_size * scale internally (default 4)
         """
         self.width = world_size
@@ -165,6 +169,13 @@ class MalariaSmearSim:
         self.n_wbc = n_wbc
         self.parasitemia = parasitemia
         self.multi_infection_rate = multi_infection_rate
+        self._applique_rate = applique_rate
+
+        # Platelets — auto-compute if 0 (~10-20 per 100x FOV in a normal smear)
+        if n_platelets == 0:
+            # ~150-400k/µL vs ~4-5M/µL RBC → ~1 platelet per 15 RBCs
+            n_platelets = max(20, n_rbc // 15)
+        self.n_platelets = n_platelets
 
         # Stage distribution
         if stage_distribution is not None:
@@ -256,12 +267,17 @@ class MalariaSmearSim:
                 angle = rng.uniform(0, 2 * np.pi)
                 dot_lo, dot_hi = self.PARASITE_STAGES[stage]["chromatin_dots"]
                 n_dots = int(rng.integers(dot_lo, dot_hi + 1))
+                # Gametocyte sex dimorphism: macro (female) = darker, micro (male) = paler
+                gam_sex = None
+                if stage == "gametocyte":
+                    gam_sex = "macro" if rng.random() < 0.6 else "micro"
                 cell_parasites.append({
                     "stage": stage,
                     "offset_x": px,
                     "offset_y": py,
                     "angle": angle,
                     "n_dots": n_dots,
+                    "gam_sex": gam_sex,
                 })
                 stage_counts[stage] += 1
             self._parasites.append(cell_parasites)
@@ -294,6 +310,25 @@ class MalariaSmearSim:
         self._wbc_types = wbc_types[:self.n_wbc]
         self._wbc_radius = np.array([6.5 if t == "neutrophil" else 4.5
                                      for t in self._wbc_types])
+
+        # ── Platelets (small purple-blue bodies, 1-3µm) ──
+        self._plt_x = rng.uniform(margin, self.width - margin, self.n_platelets)
+        self._plt_y = rng.uniform(margin, self.height - margin, self.n_platelets)
+        self._plt_radius = rng.uniform(0.5, 1.5, self.n_platelets)  # µm → world px
+
+        # ── Appliqué flags for ring-stage parasites ──
+        for i in range(self.n_rbc):
+            for p in self._parasites[i]:
+                if p["stage"] == "ring":
+                    p["applique"] = bool(rng.random() < self._applique_rate)
+                    if p["applique"]:
+                        # Place ring on RBC periphery
+                        edge_angle = float(rng.uniform(0, 2 * np.pi))
+                        edge_r = self._rbc_radius[i] * 0.75
+                        p["offset_x"] = edge_r * np.cos(edge_angle)
+                        p["offset_y"] = edge_r * np.sin(edge_angle)
+                else:
+                    p["applique"] = False
 
     def _render_full(self):
         """Pre-render all channels at full resolution."""
@@ -380,6 +415,25 @@ class MalariaSmearSim:
         # ── WBCs ──
         for i in range(self.n_wbc):
             self._render_wbc_bf(img, i)
+
+        # ── Platelets (small purple-blue bodies) ──
+        plt_color_dark = (100, 70, 140)   # dark purple core
+        plt_color_light = (160, 140, 180)  # lighter halo
+        for i in range(self.n_platelets):
+            px = self._s(self._plt_x[i])
+            py = self._s(self._plt_y[i])
+            pr = max(1, self._s(self._plt_radius[i]))
+            # Halo (lighter)
+            if pr > 1:
+                cv2.circle(img, (px, py), pr + 1, plt_color_light, -1, cv2.LINE_AA)
+            # Core (darker purple)
+            cv2.circle(img, (px, py), pr, plt_color_dark, -1, cv2.LINE_AA)
+            # Some platelets form small clusters (2-3 touching)
+            if i < self.n_platelets - 1 and self._noise_rng.random() < 0.08:
+                dx = self._noise_rng.integers(-pr * 2, pr * 2 + 1)
+                dy = self._noise_rng.integers(-pr * 2, pr * 2 + 1)
+                cv2.circle(img, (px + dx, py + dy), max(1, pr - 1),
+                           plt_color_dark, -1)
 
         return np.clip(img, 0, 255).astype(np.uint8)
 
@@ -479,15 +533,20 @@ class MalariaSmearSim:
 
         if stage == "ring":
             ring_r = max(2 * s, size)
-            cv2.circle(img, (px, py), ring_r, color_cyto, max(2, lt), cv2.LINE_AA)
-            if ring_r > 2 * s:
-                cv2.circle(img, (px, py), max(1, ring_r - 2 * s),
-                           ring_interior, -1)
+            # Delicate ring — thinner line for smaller rings (P. falciparum diagnostic)
+            ring_thick = max(1, min(lt, ring_r // 3))
+            cv2.circle(img, (px, py), ring_r, color_cyto, ring_thick, cv2.LINE_AA)
+            # Clear interior for ring transparency
+            inner_r = max(1, ring_r - ring_thick - 1)
+            if inner_r > 1:
+                cv2.circle(img, (px, py), inner_r, ring_interior, -1)
+            # Chromatin dots — vivid red, on ring perimeter
             for d in range(parasite["n_dots"]):
                 dot_angle = angle + d * np.pi * 0.7
                 dx = int(ring_r * np.cos(dot_angle))
                 dy = int(ring_r * np.sin(dot_angle))
-                dot_r = max(lt, int(size * 0.4))
+                # Chromatin dots are proportionally larger than ring (prominent feature)
+                dot_r = max(lt, int(ring_r * 0.45))
                 cv2.circle(img, (px + dx, py + dy), dot_r, color_chrom, -1)
 
         elif stage == "trophozoite":
@@ -523,6 +582,17 @@ class MalariaSmearSim:
             gam_len = max(4 * s, int(rbc_r * 1.1))
             gam_w = max(2 * s, int(rbc_r * 0.45))
 
+            # Macro/micro dimorphism: macro (female) darker, micro (male) paler
+            gam_sex = parasite.get("gam_sex", "macro")
+            if gam_sex == "macro":
+                # Macrogametocyte: darker blue-purple, concentrated pigment
+                fill_color = color_cyto  # deep blue-purple (100, 115, 180)
+                chrom_color = color_chrom
+            else:
+                # Microgametocyte: paler, more diffuse
+                fill_color = (140, 150, 200)  # lighter blue
+                chrom_color = (185, 55, 85)   # paler red-pink
+
             n_pts = 20
             t = np.linspace(-0.85 * np.pi, 0.85 * np.pi, n_pts)
 
@@ -539,15 +609,26 @@ class MalariaSmearSim:
             ry = crescent_x * sin_a + crescent_y * cos_a + py
 
             pts = np.column_stack([rx, ry]).astype(np.int32).reshape((-1, 1, 2))
-            cv2.fillPoly(img, [pts], color_cyto)
+            cv2.fillPoly(img, [pts], fill_color)
             # Outline slightly darker
-            outline = tuple(max(0, c - 20) for c in color_cyto)
+            outline = tuple(max(0, c - 20) for c in fill_color)
             cv2.polylines(img, [pts], True, outline, lt, cv2.LINE_AA)
+
+            # Hemozoin pigment granules along crescent body (concentrated in macro)
+            n_pigment = 5 if gam_sex == "macro" else 2
+            for _ in range(n_pigment):
+                pt = float(self._render_rng.uniform(-0.5 * np.pi, 0.5 * np.pi))
+                gx = gam_len * 0.4 * np.sin(pt)
+                gy = -gam_w * 0.15 * np.cos(pt)
+                rx_p = gx * cos_a - gy * sin_a + px
+                ry_p = gx * sin_a + gy * cos_a + py
+                cv2.circle(img, (int(rx_p), int(ry_p)), max(1, lt),
+                           self._hemozoin_color, -1)
 
             chr_len = max(lt, gam_len // 3)
             chr_w = max(lt, gam_w // 3)
             cv2.ellipse(img, (px, py), (chr_len, chr_w),
-                        np.degrees(angle), 0, 360, color_chrom, -1)
+                        np.degrees(angle), 0, 360, chrom_color, -1)
 
     def _render_wbc_bf(self, img, idx):
         """Render a WBC on RGB brightfield at internal resolution."""
@@ -868,13 +949,23 @@ class MalariaSmearSim:
                 # New ring parasite at age 0
                 r = self._rbc_radius[target]
                 max_offset = r * 0.4
+                is_applique = bool(self.rng.random() < self._applique_rate)
+                if is_applique:
+                    edge_angle = float(self.rng.uniform(0, 2 * np.pi))
+                    off_x = r * 0.75 * np.cos(edge_angle)
+                    off_y = r * 0.75 * np.sin(edge_angle)
+                else:
+                    off_x = float(self.rng.uniform(-max_offset, max_offset))
+                    off_y = float(self.rng.uniform(-max_offset, max_offset))
                 self._parasites[target].append({
                     "stage": "ring",
-                    "offset_x": float(self.rng.uniform(-max_offset, max_offset)),
-                    "offset_y": float(self.rng.uniform(-max_offset, max_offset)),
+                    "offset_x": off_x,
+                    "offset_y": off_y,
                     "angle": float(self.rng.uniform(0, 2 * np.pi)),
                     "n_dots": int(self.rng.integers(1, 3)),
                     "age": 0.0,
+                    "gam_sex": None,
+                    "applique": is_applique,
                 })
                 n_new += 1
 

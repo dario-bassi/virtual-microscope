@@ -106,8 +106,17 @@ class FibroblastSim:
                 "washout_rate": 0.05,
                 "fiber_dimming": 0.6,
                 "fa_dimming": 0.5,
-                "cell_swelling": -0.15,
+                "cell_swelling": 0.10,  # ROCK inhibition → slight cell spreading
                 "lamellipodium_loss": False,
+            },
+            "nocodazole": {
+                "target_effect": 1.0,
+                "onset_rate": 0.07,
+                "washout_rate": 0.04,
+                "fiber_dimming": -0.4,   # negative = ENHANCEMENT via RhoA/GEF-H1
+                "fa_dimming": -0.3,      # focal adhesions also enhanced
+                "cell_swelling": -0.15,  # cell area shrinks (retraction)
+                "lamellipodium_loss": True,  # lamellipodia retract
             },
         }
         self._time = 0.0
@@ -360,10 +369,24 @@ class FibroblastSim:
         s = self.internal_scale
         blur_k = max(3, s * 3) | 1
 
+        # Drug-induced morphology: cell_swelling adjusts dimensions
+        de = self._drug_effect
+        profile = (self._drug_profiles.get(self._drug_name, {})
+                   if self._drug_name else {})
+        swell = profile.get("cell_swelling", 0.0) * de
+        # Positive swell → rounding up: width increases, length decreases
+        # Negative swell → retraction: both decrease
+        if swell >= 0:
+            width_mult = 1.0 + swell * 1.5
+            length_mult = 1.0 - swell * 0.5
+        else:
+            width_mult = 1.0 + swell   # shrinks (swell is negative)
+            length_mult = 1.0 + swell * 0.7
+
         for cell in self._cells:
             center = (self._s(cell["cx"]), self._s(cell["cy"]))
-            half_len = self._s(cell["length"] / 2)
-            half_wid = self._s(cell["width"] / 2)
+            half_len = self._s(cell["length"] / 2 * length_mult)
+            half_wid = self._s(cell["width"] / 2 * width_mult)
             angle_deg = math.degrees(cell["angle"])
 
             # --- Phase halo: bright rim around cell boundary ---

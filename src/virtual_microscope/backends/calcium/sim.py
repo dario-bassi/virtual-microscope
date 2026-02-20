@@ -642,6 +642,26 @@ class CalciumSim:
         img_f *= (1.0 - nuc_dim)
         np.clip(img_f, 0, 255, out=img_f)
 
+        # Calcium sparks: stochastic subcellular bright spots from ER release
+        # ~2% of cells per frame; small ~2px radius, +60-100 counts above local
+        n_sparks = self._noise_rng.poisson(max(1, int(0.02 * self.nb_cells)))
+        if n_sparks > 0:
+            s = self.internal_scale
+            r_cell = self.cell_radius  # scalar, same for all cells
+            spark_cells = self._noise_rng.choice(self.nb_cells, n_sparks)
+            for ci in spark_cells:
+                cx_w, cy_w = self.centers[ci]
+                # Random position within cell cytoplasm (avoid nucleus)
+                angle = self._noise_rng.uniform(0, 2 * np.pi)
+                dist = self._noise_rng.uniform(0.3, 0.8) * r_cell
+                sx = int(cx_w * s + np.cos(angle) * dist * s)
+                sy = int(cy_w * s + np.sin(angle) * dist * s)
+                if 0 <= sx < w and 0 <= sy < h:
+                    spark_r = max(1, int(1.5 * s))
+                    spark_val = self._noise_rng.uniform(60, 100)
+                    cv2.circle(img_f, (sx, sy), spark_r, float(img_f[sy, sx] + spark_val), -1)
+            np.clip(img_f, 0, 255, out=img_f)
+
         # OOF haze: diffuse glow from out-of-focus planes + medium dye
         s = self.internal_scale
         haze_sigma = max(15.0 * s, 5.0)

@@ -120,9 +120,15 @@ class CalciumSim:
             (self.centers[:, 1] / self._scale).astype(int), 0, N - 1)
         self._cell_pde_x = np.clip(
             (self.centers[:, 0] / self._scale).astype(int), 0, N - 1)
-        self._dye_loading = 0.5 + 0.5 * self.rng.random(n_cells)
+        # Dye loading: log-normal for realistic 3-5x cell-to-cell variability
+        self._dye_loading = np.clip(
+            self.rng.lognormal(mean=-0.2, sigma=0.5, size=n_cells), 0.15, 1.0)
         self._cell_response_amp = 0.7 + 0.3 * self.rng.random(n_cells)
         self._cell_intensities = np.zeros(n_cells)
+        # GCaMP indicator state: separate from PDE for rise/decay kinetics
+        self._gcamp_state = np.zeros(n_cells)
+        # Per-cell response threshold (some cells skip waves)
+        self._response_threshold = self.rng.uniform(0.0, 0.25, n_cells)
         self._build_voronoi()
 
         # Optogenetic stimulation
@@ -397,17 +403,37 @@ class CalciumSim:
         # Invert: 1.0 near center, 0.7 at boundary (thicker cytoplasm = more signal)
         self._cyto_gradient = (1.0 - 0.3 * norm_dist).astype(np.float32)
 
-    def _update_intensities(self):
-        """Sample GCaMP field at each cell's position with Hill function."""
+    def _advance_gcamp(self, dt: float):
+        """Advance GCaMP indicator kinetics by dt seconds.
+
+        GCaMP6s: fast rise (~150ms tau), slow decay (~500ms half-life).
+        Called from step() so kinetics run during simulation, not only
+        during rendering.
+        """
         u_vals = self.u[self._cell_pde_y, self._cell_pde_x]
-        # Map FHN u (range ~ -1 to 2) to calcium [0, 1]
         ca = np.clip((u_vals + 1.0) / 2.5, 0, 1)
-        # Hill function: GCaMP6s Kd ≈ 0.35, n ≈ 3.0 (wider dynamic range)
+        # Cell-skipping: cells with low calcium don't respond
+        ca[ca < self._response_threshold] = 0.0
+        # Hill function: GCaMP6s Kd ≈ 0.35, n ≈ 3.0
         kd, n_hill = 0.35, 3.0
         ca_n = ca ** n_hill
-        gcamp = ca_n / (kd ** n_hill + ca_n)
-        self._cell_intensities = np.clip(
-            gcamp * self._dye_loading * self._cell_response_amp, 0, 1)
+        gcamp_target = ca_n / (kd ** n_hill + ca_n)
+        gcamp_target *= self._dye_loading * self._cell_response_amp
+
+        # Asymmetric kinetics: fast rise, slow decay
+        tau_on = 0.15   # rise time constant (seconds)
+        tau_off = 0.75  # decay time constant
+        rising = gcamp_target > self._gcamp_state
+        rate = np.where(rising, dt / tau_on, dt / tau_off)
+        rate = np.clip(rate, 0, 1)
+        self._gcamp_state += (gcamp_target - self._gcamp_state) * rate
+        self._cell_intensities = np.clip(self._gcamp_state, 0, 1)
+
+    def _update_intensities(self):
+        """Update cell intensities from current GCaMP state (for rendering)."""
+        # Advance kinetics by one PDE dt worth of time
+        self._advance_gcamp(self.pde_dt * self.steps_per_snap)
+        self._cell_intensities = np.clip(self._gcamp_state, 0, 1)
 
     def _fire_pacemakers(self):
         """Inject current at pacemaker locations (all fire simultaneously)."""
@@ -468,6 +494,9 @@ class CalciumSim:
             self._evolve(n_steps)
         self._time += n_steps * self.pde_dt
 
+        # Advance GCaMP indicator kinetics
+        self._advance_gcamp(dt)
+
     def _advance_pacemakers(self, dt: float):
         """Fire pacemakers based on accumulated time.
 
@@ -514,6 +543,9 @@ class CalciumSim:
         else:
             self._evolve(n_steps)
         self._time += n_steps * self.pde_dt
+
+        # Advance GCaMP indicator kinetics
+        self._advance_gcamp(dt)
 
     # ── Rendering (Voronoi cellular overlay on PDE) ──
 
@@ -587,30 +619,34 @@ class CalciumSim:
         resp = self._cell_response_amp[self._cell_labels]
 
         # Blend per-cell + smooth field for natural wavefront
+        # 92% per-cell gives the cell-by-cell staircase propagation seen
+        # in real intercellular calcium waves (gap-junction mediated)
         per_cell = self._cell_intensities[self._cell_labels]
         smooth_signal = gcamp_field * dye * resp
-        blended = 0.7 * per_cell + 0.3 * smooth_signal
+        blended = 0.92 * per_cell + 0.08 * smooth_signal
 
-        # Baseline (dim — resting cells nearly dark) + calcium signal
-        base = 3.0
-        img_f = base + blended * 220.0
+        # Realistic baseline: GCaMP has visible resting fluorescence (~40)
+        # dF/F ~4x at peak matches real GCaMP6s calcium transients
+        base = 40.0
+        img_f = base + blended * 170.0
 
         # Subcellular gradient: brighter near cell center (thicker cytoplasm)
         img_f *= self._cyto_gradient
 
-        # Cell boundary dimming (gap junctions attenuate signal)
-        img_f[self._boundary_mask] -= 4.0
+        # Cell boundary dimming: subtle, only visible at high magnification
+        if self.current_objectiv >= 40:
+            img_f[self._boundary_mask] -= 1.5
 
         # Nuclear exclusion: GCaMP is cytoplasmic, nuclei appear as dark voids
         nuc_dim = self._nuc_mask * 0.7
         img_f *= (1.0 - nuc_dim)
         np.clip(img_f, 0, 255, out=img_f)
 
-        # OOF haze: diffuse glow from out-of-focus planes
+        # OOF haze: diffuse glow from out-of-focus planes + medium dye
         s = self.internal_scale
         haze_sigma = max(15.0 * s, 5.0)
         haze = cv2.GaussianBlur(img_f, (0, 0), haze_sigma)
-        img_f = img_f * 0.88 + haze * 0.12
+        img_f = img_f * 0.82 + haze * 0.18
 
         np.clip(img_f, 0, 255, out=img_f)
         gcamp_img = img_f.astype(np.uint8)

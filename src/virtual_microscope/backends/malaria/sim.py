@@ -843,19 +843,19 @@ class MalariaSmearSim:
     def _check_perfusion_drug(self):
         """Check Perfusion device state and toggle drug delivery.
 
-        Perfusion state 4 ("Drug") → apply chloroquine by default.
-        Perfusion state 5 ("Drug2") → apply artemisinin.
+        Perfusion state 4 ("Drug") → apply artemisinin (first-line antimalarial).
+        Perfusion state 5 ("Drug2") → apply chloroquine.
         Other states → wash out drug if active.
         """
         if "Perfusion" not in self.state_devices:
             return
         p_state = str(self.state_devices["Perfusion"].get("label", "Off"))
         if p_state == "Drug":
-            if not self._drug_active or self._drug_name != "chloroquine":
-                self.apply_drug("chloroquine")
-        elif p_state == "Drug2":
             if not self._drug_active or self._drug_name != "artemisinin":
                 self.apply_drug("artemisinin")
+        elif p_state == "Drug2":
+            if not self._drug_active or self._drug_name != "chloroquine":
+                self.apply_drug("chloroquine")
         else:
             if self._drug_active:
                 self.remove_drug()

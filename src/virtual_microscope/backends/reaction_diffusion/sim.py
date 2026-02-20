@@ -226,15 +226,34 @@ class ReactionDiffusionSim:
         self._time += n_steps * self.dt
 
     def step_autonomous(self, dt: float = 1.0):
-        """Advance simulation without SLM-dependent effects.
+        """Advance simulation WITH SLM optogenetic effects.
 
-        Used by RealtimeEngine to evolve the PDE on the background thread
-        while keeping SLM stimulation observation-coupled (snap_frame only).
-        Noise is still active, so new patterns can nucleate spontaneously.
+        For reaction-diffusion, optogenetic illumination is continuous
+        (independent of imaging), so the background thread must apply
+        the SLM mask at every step — unlike photobleaching which is
+        observation-coupled.
         """
+        # Read SLM-Mode from state_devices (updated by core.setState)
+        if "SLM-Mode" in self.state_devices:
+            mode_dev = self.state_devices["SLM-Mode"]
+            label = mode_dev.get("label", mode_dev.get("Label", "excite"))
+            self._slm_mode = 1 if label == "inhibit" else 0
+
         temp_factor = self._temp_rate_factor()
         n_steps = max(1, round(dt * self.steps_per_snap * temp_factor))
-        self._evolve(n_steps)
+
+        if self._stim_mask is not None:
+            stim = self._stim_mask.astype(np.float64)
+            if self._slm_mode == 0:
+                F_map = self.F + stim * self._stim_strength
+                K_val = self.K
+            else:
+                F_map = self.F
+                K_val = self.K + stim * self._inhibit_strength
+            self._evolve_with_stim(n_steps, F_map, K_val)
+        else:
+            self._evolve(n_steps)
+
         self._time += n_steps * self.dt
 
     def _evolve_with_stim(self, n_steps: int, F_map, K_map):

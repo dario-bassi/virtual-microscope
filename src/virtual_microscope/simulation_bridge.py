@@ -69,8 +69,30 @@ class SimulationBridge:
         self._sim.state_devices.update(dict_state)
 
     def set_slm_mask(self, mask: np.ndarray) -> None:
-        """Called by SLM device when pattern changes."""
+        """Called by SLM device when pattern changes.
+
+        Also propagates to the sim's _stim_mask so that background-thread
+        step() calls (RealtimeEngine) pick up the mask immediately —
+        critical for continuous optogenetics where illumination is independent
+        of imaging.
+        """
         self._current_slm_mask = mask
+        # Propagate to sim so step()/step_autonomous() can use it
+        if hasattr(self._sim, '_stim_mask'):
+            import cv2
+            sim = self._sim
+            h = getattr(sim, 'height', getattr(sim, 'world_size', 512))
+            w = getattr(sim, 'width', getattr(sim, 'world_size', 512))
+            if mask is not None and mask.shape[:2] != (h, w):
+                mapped = cv2.resize(
+                    mask.astype(np.uint8), (w, h),
+                    interpolation=cv2.INTER_NEAREST,
+                ).astype(bool)
+            elif mask is not None:
+                mapped = mask.astype(bool)
+            else:
+                mapped = None
+            sim._stim_mask = mapped
 
     def get_slm_mask(self) -> np.ndarray:
         """Called by camera device when capturing."""

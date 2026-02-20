@@ -242,18 +242,21 @@ class NeuronSim:
             neuron["apical_angle"] = apical_angle  # for pear-shaped soma
             self._grow_dendrite(neuron, sx, sy, apical_angle,
                                 length=rng.uniform(80, 140), width=2.5,
-                                branch_prob=0.35, depth=0, max_depth=4, rng=rng)
+                                branch_prob=0.35, depth=0, max_depth=4, rng=rng,
+                                soma_r=soma_r)
             # Basal dendrites: 3-5 radiating downward
             n_basal = rng.integers(3, 6)
             for j in range(n_basal):
                 angle = np.pi/2 + rng.uniform(-0.8, 0.8) * np.pi / n_basal + j * np.pi / n_basal - np.pi/2
                 self._grow_dendrite(neuron, sx, sy, angle,
                                     length=rng.uniform(40, 80), width=2.0,
-                                    branch_prob=0.30, depth=0, max_depth=3, rng=rng)
+                                    branch_prob=0.30, depth=0, max_depth=3, rng=rng,
+                                    soma_r=soma_r)
             # Axon: one long thin process
             axon_angle = np.pi/2 + rng.normal(0, 0.3)
             self._grow_axon(neuron, sx, sy, axon_angle,
-                            length=rng.uniform(100, 200), rng=rng)
+                            length=rng.uniform(100, 200), rng=rng,
+                            soma_r=soma_r)
 
         elif ntype == "stellate":
             soma_r = rng.uniform(5, 8)
@@ -264,11 +267,13 @@ class NeuronSim:
                 angle = 2 * np.pi * j / n_dend + rng.normal(0, 0.2)
                 self._grow_dendrite(neuron, sx, sy, angle,
                                     length=rng.uniform(50, 100), width=2.0,
-                                    branch_prob=0.25, depth=0, max_depth=3, rng=rng)
+                                    branch_prob=0.25, depth=0, max_depth=3, rng=rng,
+                                    soma_r=soma_r)
             # Axon
             axon_angle = rng.uniform(0, 2 * np.pi)
             self._grow_axon(neuron, sx, sy, axon_angle,
-                            length=rng.uniform(80, 160), rng=rng)
+                            length=rng.uniform(80, 160), rng=rng,
+                            soma_r=soma_r)
 
         elif ntype == "bipolar":
             soma_r = rng.uniform(4, 6)
@@ -277,27 +282,48 @@ class NeuronSim:
             angle1 = rng.uniform(0, np.pi)
             self._grow_dendrite(neuron, sx, sy, angle1,
                                 length=rng.uniform(60, 120), width=2.0,
-                                branch_prob=0.15, depth=0, max_depth=2, rng=rng)
+                                branch_prob=0.15, depth=0, max_depth=2, rng=rng,
+                                soma_r=soma_r)
             self._grow_dendrite(neuron, sx, sy, angle1 + np.pi + rng.normal(0, 0.2),
                                 length=rng.uniform(60, 120), width=2.0,
-                                branch_prob=0.15, depth=0, max_depth=2, rng=rng)
+                                branch_prob=0.15, depth=0, max_depth=2, rng=rng,
+                                soma_r=soma_r)
             # Short axon from soma
             axon_angle = angle1 + np.pi/2 + rng.normal(0, 0.3)
             self._grow_axon(neuron, sx, sy, axon_angle,
-                            length=rng.uniform(40, 80), rng=rng)
+                            length=rng.uniform(40, 80), rng=rng,
+                            soma_r=soma_r)
 
         return neuron
 
     def _grow_dendrite(self, neuron, x0, y0, angle, length, width,
-                       branch_prob, depth, max_depth, rng):
-        """Recursively grow a dendrite with random branching."""
+                       branch_prob, depth, max_depth, rng,
+                       soma_r=None):
+        """Recursively grow a dendrite with random branching.
+
+        For primary dendrites (depth=0), the start point is offset to the
+        soma surface and the proximal segment is thicker (cone-shaped
+        hillock), matching real neuron morphology where thick primary
+        dendrites taper away from the soma.
+        """
         if depth > max_depth or length < 8:
             return
+
+        # Primary dendrites start at soma surface, not center
+        if depth == 0 and soma_r is not None:
+            x0 = x0 + soma_r * np.cos(angle)
+            y0 = y0 + soma_r * np.sin(angle)
+            # Proximal cone: 1.6x wider at soma junction, tapers over
+            # first ~20px to normal width
+            width *= 1.6
 
         # Grow in segments with slight curvature
         seg_len = min(length, rng.uniform(15, 30))
         remaining = length
         cx, cy = x0, y0
+        # Track distance from soma for proximal taper
+        dist_from_start = 0.0
+        proximal_zone = 20.0  # world px over which hillock tapers
 
         while remaining > 5:
             seg = min(seg_len, remaining)
@@ -315,6 +341,7 @@ class NeuronSim:
             neuron["segments"].append(
                 (cx, cy, nx, ny, seg_width, True))
             remaining -= seg
+            dist_from_start += seg
 
             # Branch?
             if remaining > 15 and rng.random() < branch_prob:
@@ -330,16 +357,32 @@ class NeuronSim:
 
             cx, cy = nx, ny
 
-            # Taper
-            width *= 0.95
+            # Taper: faster in proximal cone zone, normal elsewhere
+            if depth == 0 and dist_from_start < proximal_zone:
+                width *= 0.90  # fast taper from hillock
+            else:
+                width *= 0.95
 
-    def _grow_axon(self, neuron, x0, y0, angle, length, rng):
-        """Grow a thin axon with en passant varicosities (bouton swellings)."""
+    def _grow_axon(self, neuron, x0, y0, angle, length, rng,
+                   soma_r=None):
+        """Grow a thin axon with en passant varicosities (bouton swellings).
+
+        Axons originate from the axon hillock — a slight cone-shaped
+        thickening at the soma surface that tapers to normal axon width
+        over the first ~15 world px.
+        """
+        # Start from soma surface
+        if soma_r is not None:
+            x0 = x0 + soma_r * np.cos(angle)
+            y0 = y0 + soma_r * np.sin(angle)
         cx, cy = x0, y0
         remaining = length
-        width = 1.2
+        width = 2.0 if soma_r else 1.2  # hillock starts wider
         varicosity_interval = rng.uniform(12, 25)  # world px between boutons
         dist_since_varicosity = 0
+
+        dist_from_start = 0.0
+        hillock_zone = 15.0  # world px for axon hillock taper
 
         while remaining > 5:
             seg = min(rng.uniform(20, 40), remaining)
@@ -362,7 +405,13 @@ class NeuronSim:
                 varicosity_interval = rng.uniform(12, 25)
 
             remaining -= seg
+            dist_from_start += seg
             cx, cy = nx, ny
+
+            # Axon hillock taper: quickly narrow from 2.0 to normal 1.2
+            if dist_from_start < hillock_zone and width > 1.2:
+                width = max(1.2, width * 0.85)
+            # Normal axon doesn't taper further
 
     def _generate_spines(self, rng):
         """Generate dendritic spines along dendrite segments.

@@ -204,18 +204,31 @@ class YeastSim:
         return drops
 
     def _update_bud_sizes(self):
-        """Set bud sizes based on cell cycle phase."""
+        """Set bud sizes with smooth continuous growth within each phase.
+
+        Bud grows from 0.15 (S emergence) to 0.75 (M completion),
+        smoothly interpolated by phase_timer progress within each phase.
+        """
         for i in range(len(self.phase)):
             if not self.alive[i]:
                 self.bud_size[i] = 0
             elif self.phase[i] == self.PHASE_G1:
                 self.bud_size[i] = 0
             elif self.phase[i] == self.PHASE_S_BUD:
-                self.bud_size[i] = 0.25  # small bud
+                # S phase: 0.15 → 0.35 (timer counts down from div_time*0.2)
+                phase_dur = self.division_time * 0.2
+                progress = np.clip(1.0 - self.phase_timer[i] / phase_dur, 0, 1)
+                self.bud_size[i] = 0.15 + 0.20 * progress
             elif self.phase[i] == self.PHASE_G2_BUD:
-                self.bud_size[i] = 0.5   # medium bud
+                # G2 phase: 0.35 → 0.60
+                phase_dur = self.division_time * 0.2
+                progress = np.clip(1.0 - self.phase_timer[i] / phase_dur, 0, 1)
+                self.bud_size[i] = 0.35 + 0.25 * progress
             elif self.phase[i] == self.PHASE_M_BUD:
-                self.bud_size[i] = 0.75  # large bud
+                # M phase: 0.60 → 0.75
+                phase_dur = self.division_time * 0.1
+                progress = np.clip(1.0 - self.phase_timer[i] / phase_dur, 0, 1)
+                self.bud_size[i] = 0.60 + 0.15 * progress
 
     # ── Drug response API ──
 
@@ -523,44 +536,96 @@ class YeastSim:
             r = max(3, self._s(self.radius[i]))
             asp = self._aspect_ratio[i] if i < len(self._aspect_ratio) else 1.0
             ori = self._orientation[i] if i < len(self._orientation) else 0.0
-            # Per-cell phase contrast density (0=light, 1=dark)
             pc = self._phase_contrast[i] if i < len(self._phase_contrast) else 0.8
 
             is_dead = (i < len(self._dead_cells) and self._dead_cells[i])
 
+            # Precompute bud geometry (needed for figure-8 drawing order)
+            has_bud = self.bud_size[i] > 0
+            if has_bud:
+                bud_r = max(2, int(round(self.radius[i] * self.bud_size[i] * s)))
+                bud_dist = self.radius[i] * s * asp + bud_r * 0.6
+                bx = cx + int(np.cos(self.bud_angle[i]) * bud_dist)
+                by = cy + int(np.sin(self.bud_angle[i]) * bud_dist)
+
             if is_dead:
-                # Dead cells: faint, slightly swollen, no phase halo
                 self._fill_ellipse(img, cx, cy, r + 1, asp, ori, 118)
                 self._draw_ellipse(img, cx, cy, r + 2, asp, ori, 126, 1)
+                if has_bud:
+                    cv2.circle(img, (bx, by), bud_r, 118, -1)
             else:
-                # ── Halo: smooth Gaussian-like bright ring at cell boundary ──
-                # 5 concentric rings for smoother falloff (outer→inner)
+                # ── Phase contrast shade-off parameters ──
+                # Real yeast are relatively transparent in PC
+                edge_val = 80 + (1.0 - pc) * 20    # 80 (dark) → 100 (light)
+                center_val = 120 + (1.0 - pc) * 4  # 120 (dark) → 124 (light)
+
+                # ── Halo profile ──
                 ht = max(1, s)
                 halo_profile = [
-                    (5 * ht, 133),  # outermost: barely above background
+                    (5 * ht, 133),
                     (4 * ht, 140),
                     (3 * ht, 155),
                     (2 * ht, 172),
-                    (1 * ht, 188),  # peak halo (bright ring)
+                    (1 * ht, 188),
                 ]
+
+                # Bud phase contrast params (buds slightly less dense)
+                if has_bud:
+                    bud_pc = pc * 0.8
+                    b_edge = 80 + (1.0 - bud_pc) * 20
+                    b_center = 120 + (1.0 - bud_pc) * 4
+
+                # ── Figure-8 drawing order: bud halo FIRST ──
+                # Drawing bud halo before mother body means the mother's
+                # shade-off overwrites halo in the overlap region, creating
+                # a smooth connected figure-8 contour.
+                if has_bud:
+                    for dr, hval in halo_profile:
+                        cv2.circle(img, (bx, by), bud_r + dr, hval, -1,
+                                   cv2.LINE_AA)
+
+                # Mother halo
                 for dr, hval in halo_profile:
                     self._fill_ellipse(img, cx, cy, r + dr, asp, ori, hval)
 
-                # ── Shade-off: radial gradient, center approaches background ──
-                # Phase-dark cells: edge ~50, center ~118
-                # Phase-light cells: edge ~85, center ~122
-                edge_val = 50 + (1.0 - pc) * 35    # 50 (dark) → 85 (light)
-                center_val = 118 + (1.0 - pc) * 6  # 118 (dark) → 124 (light)
+                # Mother shade-off
                 n_bands = 7
                 for k in range(n_bands):
                     frac = 1.0 - k / n_bands
                     band_r = max(2, int(r * frac))
-                    t = k / (n_bands - 1)  # 0 (edge) → 1 (center)
+                    t = k / (n_bands - 1)
                     val = edge_val + t * (center_val - edge_val)
                     self._fill_ellipse(img, cx, cy, band_r, asp, ori, val)
 
-                # ── Vacuoles: phase-bright (watery, low RI → bright in PC) ──
-                # Real vacuoles are strikingly bright — nearly matching background
+                # Bud shade-off (drawn after mother — fills over mother edge)
+                if has_bud:
+                    for k in range(5):
+                        frac = 1.0 - k / 5
+                        br = max(2, int(bud_r * frac))
+                        t = k / 4
+                        cv2.circle(img, (bx, by), br,
+                                   b_edge + t * (b_center - b_edge), -1,
+                                   cv2.LINE_AA)
+
+                    # Bridge: fill neck to connect mother and bud smoothly
+                    neck_cx = cx + int(np.cos(self.bud_angle[i]) * r * asp)
+                    neck_cy = cy + int(np.sin(self.bud_angle[i]) * r)
+                    neck_fill_r = max(2, int(min(r, bud_r) * 0.35))
+                    neck_val = (edge_val + center_val) / 2
+                    cv2.circle(img, (neck_cx, neck_cy), neck_fill_r,
+                               neck_val, -1, cv2.LINE_AA)
+
+                    # Thin perpendicular constriction at neck (chitin ring)
+                    perp_x = -np.sin(self.bud_angle[i])
+                    perp_y = np.cos(self.bud_angle[i])
+                    constr_w = int(min(r, bud_r) * 0.5)
+                    n1 = (neck_cx + int(perp_x * constr_w),
+                          neck_cy + int(perp_y * constr_w))
+                    n2 = (neck_cx - int(perp_x * constr_w),
+                          neck_cy - int(perp_y * constr_w))
+                    cv2.line(img, n1, n2, edge_val - 5, max(1, s))
+
+                # ── Vacuoles: phase-bright (low RI → bright in PC) ──
                 if i < len(self._vacuoles):
                     cos_o, sin_o = np.cos(ori), np.sin(ori)
                     for vx, vy, vr in self._vacuoles[i]:
@@ -569,15 +634,13 @@ class YeastSim:
                         vac_cx = cx + int(round(wx))
                         vac_cy = cy + int(round(wy))
                         vac_r = max(2, int(round(vr * r)))
-                        # Large vacuoles brighter (more watery volume)
                         vac_bright = 155 + min(10, int(vr * 20))
                         cv2.circle(img, (vac_cx, vac_cy), vac_r, vac_bright,
                                    -1, cv2.LINE_AA)
-                        # Vacuolar membrane: thin bright ring (phase boundary)
                         cv2.circle(img, (vac_cx, vac_cy), vac_r, 172, 1,
                                    cv2.LINE_AA)
 
-                # ── Lipid droplets: very bright refractile puncta (high RI) ──
+                # ── Lipid droplets: very bright refractile puncta ──
                 if i < len(self._lipid_droplets):
                     cos_o, sin_o = np.cos(ori), np.sin(ori)
                     for dx, dy in self._lipid_droplets[i]:
@@ -588,43 +651,20 @@ class YeastSim:
                         dr = max(1, s // 2)
                         cv2.circle(img, (lx, ly), dr, 215, -1, cv2.LINE_AA)
 
-                # Faint nucleus region — barely visible in real phase contrast
+                # ── Nucleus (eccentric — offset from center) ──
                 nuc_r = max(2, int(r * 0.28))
-                nuc_val = center_val - 8 * pc  # subtle: nearly same as cytoplasm
-                cv2.circle(img, (cx, cy), nuc_r, nuc_val, -1)
-
-            # Draw bud if budding (even dead cells keep their buds frozen)
-            if self.bud_size[i] > 0:
-                bud_r = max(2, int(round(self.radius[i] * self.bud_size[i] * s)))
-                bud_dist = self.radius[i] * s * asp + bud_r * 0.6
-                bx = cx + int(np.cos(self.bud_angle[i]) * bud_dist)
-                by = cy + int(np.sin(self.bud_angle[i]) * bud_dist)
-
-                if is_dead:
-                    cv2.circle(img, (bx, by), bud_r, 118, -1)
+                nuc_val = center_val - 8 * pc
+                nuc_off = r * 0.25
+                if has_bud:
+                    # Nucleus migrates toward bud neck during division
+                    nuc_dx = np.cos(self.bud_angle[i]) * nuc_off * 0.5
+                    nuc_dy = np.sin(self.bud_angle[i]) * nuc_off * 0.5
                 else:
-                    # Bud halo (smooth, 5 rings matching mother profile)
-                    bht = max(1, s)
-                    for dr, hval in halo_profile:
-                        cv2.circle(img, (bx, by), bud_r + dr, hval, -1,
-                                   cv2.LINE_AA)
-                    # Bud body: shade-off gradient (buds tend phase-lighter)
-                    bud_pc = pc * 0.8  # buds slightly less dense
-                    b_edge = 50 + (1.0 - bud_pc) * 35
-                    b_center = 118 + (1.0 - bud_pc) * 6
-                    for k in range(5):
-                        frac = 1.0 - k / 5
-                        br = max(2, int(bud_r * frac))
-                        t = k / 4
-                        cv2.circle(img, (bx, by), br,
-                                   b_edge + t * (b_center - b_edge), -1,
-                                   cv2.LINE_AA)
-
-                # Neck between mother and bud (dark constriction)
-                nx = cx + int(np.cos(self.bud_angle[i]) * r * asp * 0.9)
-                ny = cy + int(np.sin(self.bud_angle[i]) * r * 0.9)
-                cv2.line(img, (nx, ny), (bx, by), 70 if not is_dead else 118,
-                         max(1, s))
+                    # Eccentric position based on orientation
+                    nuc_dx = np.cos(ori) * nuc_off * 0.3
+                    nuc_dy = np.sin(ori) * nuc_off * 0.3
+                cv2.circle(img, (cx + int(nuc_dx), cy + int(nuc_dy)),
+                           nuc_r, nuc_val, -1)
 
         # ── Cytoplasm granularity: fine noise inside cells ──
         cell_mask = img < 115
@@ -701,9 +741,18 @@ class YeastSim:
                 # Cytoplasmic fill (ellipse)
                 self._fill_ellipse(img, cx, cy, r, asp, ori, intensity)
 
-                # Nuclear exclusion (dark center)
+                # Nuclear exclusion (eccentric — matches phase contrast)
                 nuc_r = max(2, int(r * 0.28))
-                cv2.circle(img, (cx, cy), nuc_r, intensity * 0.15, -1)
+                has_bud = self.bud_size[i] > 0
+                nuc_off = r * 0.25
+                if has_bud:
+                    nuc_dx = np.cos(self.bud_angle[i]) * nuc_off * 0.5
+                    nuc_dy = np.sin(self.bud_angle[i]) * nuc_off * 0.5
+                else:
+                    nuc_dx = np.cos(ori) * nuc_off * 0.3
+                    nuc_dy = np.sin(ori) * nuc_off * 0.3
+                cv2.circle(img, (cx + int(nuc_dx), cy + int(nuc_dy)),
+                           nuc_r, intensity * 0.15, -1)
 
                 # Vacuole exclusion (dark inclusions — GFP can't enter)
                 if i < len(self._vacuoles):

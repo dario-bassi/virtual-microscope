@@ -458,10 +458,13 @@ class NeuronSim:
         """Add calcium transient glow to MAP2 image (non-destructive).
 
         GCaMP is cytoplasmic — excluded from the nucleus. Active neurons
-        show a bright ring-like flash with a dark nuclear hole in the center.
+        show a bright ring-like soma flash (dark nuclear hole) plus calcium
+        that propagates along proximal dendrite paths with distance-dependent
+        attenuation. This matches real GCaMP6f imaging where back-propagating
+        APs produce visible dendritic calcium signals.
         """
         s = self.internal_scale
-        img = base_map2.copy()
+        img = base_map2.astype(np.float32)
 
         for i, neuron in enumerate(self.neurons):
             level = self._ca_levels[i]
@@ -472,34 +475,56 @@ class NeuronSim:
             sy = int(round(self._sf(neuron["soma_y"])))
             sr = int(round(self._sf(neuron["soma_r"])))
 
-            # Bright soma flash
-            added = int(self._ca_peak * level)
-            glow_r = int((sr + self._ca_spread * s) * (0.5 + 0.5 * level))
+            added = self._ca_peak * level
 
-            # Gaussian-like radial falloff
+            # ── Soma flash: cytoplasmic ring with nuclear exclusion ──
+            glow_r = sr + max(2, int(3 * s))
             y0 = max(0, sy - glow_r)
             y1 = min(self._ih, sy + glow_r + 1)
             x0 = max(0, sx - glow_r)
             x1 = min(self._iw, sx + glow_r + 1)
-            if y0 >= y1 or x0 >= x1:
-                continue
+            if y1 > y0 and x1 > x0:
+                yy, xx = np.ogrid[y0:y1, x0:x1]
+                dist_sq = (xx - sx) ** 2 + (yy - sy) ** 2
+                # Sharp-edged soma fill (not Gaussian — cytoplasm is uniform)
+                soma_mask = dist_sq <= sr ** 2
+                glow_patch = np.zeros_like(dist_sq, dtype=np.float32)
+                glow_patch[soma_mask] = added
+                # Nuclear exclusion
+                nuc_r = sr * 0.5
+                nuc_mask = dist_sq < (nuc_r ** 2)
+                glow_patch[nuc_mask] *= 0.12
+                # Slight glow just outside soma (cytoplasmic haze)
+                outer = (dist_sq > sr ** 2) & (dist_sq < (sr * 1.4) ** 2)
+                falloff = np.exp(-(dist_sq[outer] - sr ** 2) / (2 * (sr * 0.3) ** 2 + 1))
+                glow_patch[outer] = added * 0.3 * falloff
+                img[y0:y1, x0:x1] += glow_patch
 
-            yy, xx = np.ogrid[y0:y1, x0:x1]
-            dist_sq = (xx - sx) ** 2 + (yy - sy) ** 2
-            sigma_sq = (glow_r * 0.5) ** 2 + 1
-            glow = added * np.exp(-dist_sq / (2.0 * sigma_sq))
+            # ── Dendritic calcium propagation ──
+            # Back-propagating APs spread calcium into proximal dendrites.
+            # Intensity attenuates exponentially with path distance from soma.
+            soma_wx = neuron["soma_x"]
+            soma_wy = neuron["soma_y"]
+            decay_length = 60.0  # world px — calcium fades over ~60px
 
-            # Nuclear exclusion: GCaMP is cytoplasmic, not nuclear
-            nuc_r = sr * 0.5
-            nuc_mask = dist_sq < (nuc_r ** 2)
-            glow[nuc_mask] *= 0.15  # faint residual, not zero
+            for (x0s, y0s, x1s, y1s, w, is_dend) in neuron["segments"]:
+                if not is_dend:
+                    continue
+                # Distance of segment midpoint from soma
+                mid_x = (x0s + x1s) / 2
+                mid_y = (y0s + y1s) / 2
+                dist = np.hypot(mid_x - soma_wx, mid_y - soma_wy)
+                atten = np.exp(-dist / decay_length)
+                if atten < 0.05:
+                    continue
+                seg_bright = added * atten * 0.7  # 70% of soma intensity
+                thickness = max(2, int(w * 1.3 * s))
+                ix0, iy0 = self._s(x0s), self._s(y0s)
+                ix1, iy1 = self._s(x1s), self._s(y1s)
+                cv2.line(img, (ix0, iy0), (ix1, iy1),
+                         float(seg_bright), thickness, cv2.LINE_AA)
 
-            img[y0:y1, x0:x1] = np.clip(
-                img[y0:y1, x0:x1].astype(np.float32) + glow,
-                0, 255
-            ).astype(np.uint8)
-
-        return img
+        return np.clip(img, 0, 255).astype(np.uint8)
 
     def _render_brightfield(self):
         """Render phase contrast at internal resolution.
@@ -861,7 +886,7 @@ class NeuronSim:
 
     def enable_calcium_activity(self, frequency=0.08, decay_rate=0.25,
                                 peak_intensity=220, spread_radius=25,
-                                base_dim=1.0):
+                                base_dim=0.15):
         """Enable GCaMP-like calcium transients (visible in MAP2 channel).
 
         Each neuron fires independently with Poisson probability per step.
@@ -875,7 +900,8 @@ class NeuronSim:
             spread_radius: how far calcium glow extends from soma (world px)
             base_dim: dim the MAP2 baseline by this factor (0-1). Lower values
                 model resting GCaMP (dim baseline → high dynamic range for
-                transients). Default 1.0 = no dimming.
+                transients). Default 0.15 = very dim baseline, matching real
+                GCaMP6f (>50-fold dynamic range).
         """
         self._calcium_enabled = True
         self._ca_frequency = frequency

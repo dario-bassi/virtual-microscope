@@ -873,14 +873,19 @@ class BacteriaSim:
             # Inner bright halo (capsule-shaped, tight around cell edge)
             self._draw_capsule(img, cx, cy, hl + halo_pad, hw + halo_pad,
                                angle_rad, (195, 195, 195))
-            # Cell body (dark rod — capsule shape with blunt hemispherical caps)
-            self._draw_capsule(img, cx, cy, hl, hw, angle_rad, (45, 45, 45))
-            # Subtle shade-off: very slight interior brightening
-            # (minimal for bacteria-sized objects)
+            # Cell body — 3-layer rendering for realistic phase contrast:
+            # 1. Edge zone (darkest — phase ring acts strongest at boundary)
+            self._draw_capsule(img, cx, cy, hl, hw, angle_rad, (75, 75, 75))
+            # 2. Mid-body (slightly lighter interior)
+            mid_hl = max(1, hl * 3 // 4)
+            mid_hw = max(1, hw * 3 // 4)
+            self._draw_capsule(img, cx, cy, mid_hl, mid_hw, angle_rad,
+                               (90, 90, 90))
+            # 3. Shade-off center (characteristic brightening near centre)
             so_hl = max(1, hl * 2 // 5)
             so_hw = max(1, hw * 2 // 3)
             self._draw_capsule(img, cx, cy, so_hl, so_hw, angle_rad,
-                               (55, 55, 55))
+                               (100, 100, 100))
 
             # Division septum: visible constriction for cells about to divide
             div_prog = self._division_progress(i)
@@ -892,7 +897,7 @@ class BacteriaSim:
                 px1 = int(cx + np.cos(perp_rad) * (hw + 1))
                 py1 = int(cy + np.sin(perp_rad) * (hw + 1))
                 cv2.line(img, (px0, py0), (px1, py1),
-                         (100, 100, 100), max(1, constr_depth), cv2.LINE_AA)
+                         (115, 115, 115), max(1, constr_depth), cv2.LINE_AA)
 
         return img
 

@@ -84,8 +84,8 @@ class MitoSim:
 
         # Z-drift (thermal/mechanical drift during timelapse)
         self.tissue_z = 0.0
-        self.z_drift_rate = 0.0   # µm per step
-        self.z_drift_noise = 0.0  # σ of random jitter per step
+        self.z_drift_rate = 0.0    # µm/s (positive = sample drifts up)
+        self.z_drift_noise = 0.0   # σ of z-jitter (µm·s⁻½, Brownian)
 
         # Cell geometry: circular cell centered in world
         self._cell_cx = world_size / 2

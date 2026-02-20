@@ -494,7 +494,7 @@ class CardioSim:
                 stimulated[i] = True
         return stimulated
 
-    def _accumulate_z_drift(self):
+    def _accumulate_z_drift(self, dt):
         """Accumulate Z-drift (thermal/mechanical drift during timelapse)."""
         if self.z_drift_rate != 0 or self.z_drift_noise > 0:
             dz = self.z_drift_rate * dt
@@ -537,7 +537,7 @@ class CardioSim:
         """Advance simulation, scaling PDE steps proportional to dt."""
         temp_factor = self._temp_rate_factor()
         n_steps = max(1, round(dt * self.steps_per_snap * temp_factor))
-        self._accumulate_z_drift()
+        self._accumulate_z_drift(dt)
         self._update_drug_effect()
         self._evolve(n_steps)
 
@@ -551,7 +551,7 @@ class CardioSim:
         self._stim_mask = None
         temp_factor = self._temp_rate_factor()
         n_steps = max(1, round(dt * self.steps_per_snap * temp_factor))
-        self._accumulate_z_drift()
+        self._accumulate_z_drift(dt)
         self._update_drug_effect()
         self._evolve(n_steps)
         self._stim_mask = saved_stim

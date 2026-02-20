@@ -236,7 +236,7 @@ class SPTSim:
         # Z-drift
         if self.z_drift_rate != 0 or self.z_drift_noise != 0:
             self.tissue_z += (self.z_drift_rate * dt +
-                              self._noise_rng.normal(0, max(self.z_drift_noise * dt, 0)))
+                              self._noise_rng.normal(0, max(self.z_drift_noise * np.sqrt(dt), 0)))
 
     def _update_mode(self):
         """Sync rendering mode from LED/Filter Wheel state devices.

@@ -158,6 +158,29 @@ class NeuronSim:
         """Scale world coordinate to internal resolution (float)."""
         return v * self.internal_scale
 
+    def _pear_contour(self, cx, cy, r, apical_angle, n_pts=48):
+        """Generate a pear-shaped contour for pyramidal neuron soma.
+
+        The soma is wider at the basal end (opposite the apical dendrite)
+        and narrower at the apical end, creating the characteristic
+        triangular/pear shape of pyramidal neurons.
+
+        Returns array of (x, y) points at internal-scale resolution.
+        """
+        s = self.internal_scale
+        angles = np.linspace(0, 2 * np.pi, n_pts, endpoint=False)
+        # Pear modulation: narrower toward apical, wider at base
+        # cos(θ - apical) = 1 at apical direction, -1 opposite
+        # Subtract at apical end (narrow), add at basal end (wide)
+        modulation = 1.0 - 0.2 * np.cos(angles - apical_angle)
+        rx = r * s * modulation
+        ry = r * s * 0.92 * modulation  # slight overall elongation
+        pts = np.stack([
+            cx * s + rx * np.cos(angles),
+            cy * s + ry * np.sin(angles),
+        ], axis=-1).astype(np.int32)
+        return pts
+
     def _generate_neurons(self, neuron_types=None):
         """Generate neurons with branching morphology."""
         rng = self._rng
@@ -215,7 +238,9 @@ class NeuronSim:
             soma_r = rng.uniform(7, 10)
             neuron["soma_r"] = soma_r
             # Apical dendrite: upward, long, branches
-            self._grow_dendrite(neuron, sx, sy, -np.pi/2 + rng.normal(0, 0.15),
+            apical_angle = -np.pi/2 + rng.normal(0, 0.15)
+            neuron["apical_angle"] = apical_angle  # for pear-shaped soma
+            self._grow_dendrite(neuron, sx, sy, apical_angle,
                                 length=rng.uniform(80, 140), width=2.5,
                                 branch_prob=0.35, depth=0, max_depth=4, rng=rng)
             # Basal dendrites: 3-5 radiating downward
@@ -604,59 +629,80 @@ class NeuronSim:
 
         # ── Soma rendering with proper phase contrast ──
         for ni, neuron in enumerate(self.neurons):
-            sx, sy = self._sf(neuron["soma_x"]), self._sf(neuron["soma_y"])
-            sr = self._sf(neuron["soma_r"])
-            isx, isy = int(round(sx)), int(round(sy))
-            isr = max(1, int(round(sr)))
+            sx, sy = neuron["soma_x"], neuron["soma_y"]
+            sr = neuron["soma_r"]
+            isx = int(round(sx * s))
+            isy = int(round(sy * s))
+            isr = max(1, int(round(sr * s)))
             soma_rng = np.random.default_rng(self._seed + 3000 + ni)
+            is_pyramidal = neuron["type"] == "pyramidal"
 
-            # Slight ellipticity (real neurons aren't perfectly round)
-            ecc = soma_rng.uniform(0.85, 1.0)
-            angle = soma_rng.uniform(0, 360)
-            axes_a = isr
-            axes_b = max(1, int(isr * ecc))
+            if is_pyramidal and "apical_angle" in neuron:
+                # Pear-shaped soma for pyramidal neurons
+                apical = neuron["apical_angle"]
+                contour = self._pear_contour(sx, sy, sr, apical)
+                # Bright halo (draw enlarged contour)
+                halo_contour = self._pear_contour(
+                    sx, sy, sr + 1.5, apical)
+                cv2.polylines(img, [halo_contour], True, 210.0,
+                              max(2, int(1.2 * s)), cv2.LINE_AA)
+                # Dark cytoplasm fill
+                cv2.fillPoly(img, [contour], 85.0, cv2.LINE_AA)
+                # Organellar texture
+                mask_y0 = max(0, isy - isr - s)
+                mask_y1 = min(self._ih, isy + isr + s + 1)
+                mask_x0 = max(0, isx - isr - s)
+                mask_x1 = min(self._iw, isx + isr + s + 1)
+                if mask_y1 > mask_y0 and mask_x1 > mask_x0:
+                    ph, pw = mask_y1 - mask_y0, mask_x1 - mask_x0
+                    sm = np.zeros((ph, pw), dtype=np.uint8)
+                    shifted = contour.copy()
+                    shifted[:, 0] -= mask_x0
+                    shifted[:, 1] -= mask_y0
+                    cv2.fillPoly(sm, [shifted], 255)
+                    soma_px = sm > 0
+                    noise = soma_rng.normal(0, 3.5, (ph, pw)).astype(np.float32)
+                    noise = cv2.GaussianBlur(noise, (0, 0), 0.6 * s)
+                    img[mask_y0:mask_y1, mask_x0:mask_x1][soma_px] += noise[soma_px]
+            else:
+                # Elliptical soma for stellate/bipolar
+                ecc = soma_rng.uniform(0.85, 1.0)
+                angle = soma_rng.uniform(0, 360)
+                axes_a = isr
+                axes_b = max(1, int(isr * ecc))
+                # Bright halo ring
+                halo_a = axes_a + max(2, int(1.5 * s))
+                halo_b = axes_b + max(2, int(1.5 * s))
+                halo_w = max(2, int(1.2 * s))
+                cv2.ellipse(img, (isx, isy), (halo_a, halo_b), angle,
+                            0, 360, 210.0, halo_w, cv2.LINE_AA)
+                # Dark cytoplasm fill
+                cv2.ellipse(img, (isx, isy), (axes_a, axes_b), angle,
+                            0, 360, 85.0, -1, cv2.LINE_AA)
+                # Organellar texture
+                mask_y0 = max(0, isy - isr - 1)
+                mask_y1 = min(self._ih, isy + isr + 2)
+                mask_x0 = max(0, isx - isr - 1)
+                mask_x1 = min(self._iw, isx + isr + 2)
+                if mask_y1 > mask_y0 and mask_x1 > mask_x0:
+                    ph, pw = mask_y1 - mask_y0, mask_x1 - mask_x0
+                    sm = np.zeros((ph, pw), dtype=np.uint8)
+                    cv2.ellipse(sm, (isx - mask_x0, isy - mask_y0),
+                                (axes_a, axes_b), angle, 0, 360, 255, -1)
+                    soma_px = sm > 0
+                    noise = soma_rng.normal(0, 3.5, (ph, pw)).astype(np.float32)
+                    noise = cv2.GaussianBlur(noise, (0, 0), 0.6 * s)
+                    img[mask_y0:mask_y1, mask_x0:mask_x1][soma_px] += noise[soma_px]
 
-            # Bright halo ring (outside cell boundary)
-            halo_a = axes_a + max(2, int(1.5 * s))
-            halo_b = axes_b + max(2, int(1.5 * s))
-            halo_w = max(2, int(1.2 * s))
-            cv2.ellipse(img, (isx, isy), (halo_a, halo_b), angle,
-                        0, 360, 210.0, halo_w, cv2.LINE_AA)
+            # Nuclear region and nucleolus (same for all types)
+            nuc_r = max(1, int(sr * s * 0.55))
+            cv2.circle(img, (isx, isy), nuc_r, 105.0, -1, cv2.LINE_AA)
 
-            # Dark cytoplasm fill
-            cv2.ellipse(img, (isx, isy), (axes_a, axes_b), angle,
-                        0, 360, 85.0, -1, cv2.LINE_AA)
-
-            # Organellar texture: granular noise for mitochondria/ER/Golgi
-            # visible in phase contrast at high magnification
-            mask_y0 = max(0, isy - isr - 1)
-            mask_y1 = min(self._ih, isy + isr + 2)
-            mask_x0 = max(0, isx - isr - 1)
-            mask_x1 = min(self._iw, isx + isr + 2)
-            if mask_y1 > mask_y0 and mask_x1 > mask_x0:
-                ph, pw = mask_y1 - mask_y0, mask_x1 - mask_x0
-                # Create soma mask for this patch
-                sm = np.zeros((ph, pw), dtype=np.uint8)
-                cv2.ellipse(sm, (isx - mask_x0, isy - mask_y0),
-                            (axes_a, axes_b), angle, 0, 360, 255, -1)
-                soma_px = sm > 0
-                # Speckled granularity (mitochondria, ER, Golgi bodies)
-                noise = soma_rng.normal(0, 3.5, (ph, pw)).astype(np.float32)
-                noise = cv2.GaussianBlur(noise, (0, 0), 0.6 * s)
-                img[mask_y0:mask_y1, mask_x0:mask_x1][soma_px] += noise[soma_px]
-
-            # Slightly lighter nuclear region (shade-off)
-            nuc_r = max(1, int(sr * 0.55))
-            nuc_a = nuc_r
-            nuc_b = max(1, int(nuc_r * ecc))
-            cv2.ellipse(img, (isx, isy), (nuc_a, nuc_b), angle,
-                        0, 360, 105.0, -1, cv2.LINE_AA)
-
-            # Nucleolus: tiny very dark dot (offset from center)
-            nucl_r = max(1, int(sr * 0.15))
+            nucl_r = max(1, int(sr * s * 0.15))
             nucl_off = max(1, int(nuc_r * 0.25))
-            nucl_dx = int(nucl_off * np.cos(np.radians(angle + 30)))
-            nucl_dy = int(nucl_off * np.sin(np.radians(angle + 30)))
+            nucl_angle = soma_rng.uniform(0, 2 * np.pi)
+            nucl_dx = int(nucl_off * np.cos(nucl_angle))
+            nucl_dy = int(nucl_off * np.sin(nucl_angle))
             cv2.circle(img, (isx + nucl_dx, isy + nucl_dy),
                        nucl_r, 55.0, -1, cv2.LINE_AA)
 
@@ -700,11 +746,19 @@ class NeuronSim:
                              (self._s(x1), self._s(y1)),
                              20.0, thickness, cv2.LINE_AA)
 
-            # Soma: bright fill with slightly dimmer nuclear region
-            cv2.circle(img, (isx, isy),
-                       max(1, int(round(sr))), 190.0, -1)
+            # Soma: bright fill with dark nuclear hole (MAP2 is cytoplasmic)
+            is_pyramidal = neuron["type"] == "pyramidal"
+            if is_pyramidal and "apical_angle" in neuron:
+                contour = self._pear_contour(
+                    neuron["soma_x"], neuron["soma_y"],
+                    neuron["soma_r"], neuron["apical_angle"])
+                cv2.fillPoly(img, [contour], 190.0, cv2.LINE_AA)
+            else:
+                cv2.circle(img, (isx, isy),
+                           max(1, int(round(sr))), 190.0, -1)
+            # Dark nuclear hole (MAP2 is excluded from nucleus)
             nuc_r = max(1, int(sr * 0.5))
-            cv2.circle(img, (isx, isy), nuc_r, 140.0, -1)
+            cv2.circle(img, (isx, isy), nuc_r, 35.0, -1)
 
             # Branch point hotspots
             for bx, by in neuron["branch_points"]:

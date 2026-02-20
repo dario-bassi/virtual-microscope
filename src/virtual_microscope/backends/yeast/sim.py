@@ -166,8 +166,16 @@ class YeastSim:
 
         Returns list of (rel_x, rel_y, rel_radius) in units of cell radius.
         Older cells (more bud scars) tend to have larger/more vacuoles.
+        Very old cells (5+ scars) often have a single dominant vacuole
+        filling much of the cell interior.
         """
         n_scars = len(self._bud_scars[cell_idx]) if cell_idx < len(self._bud_scars) else 0
+        # Old cells (5+ scars): single dominant vacuole ~55-65% of cell radius
+        if n_scars >= 5 and self.rng.random() < 0.6:
+            size = self.rng.uniform(0.50, 0.62)
+            dist = self.rng.uniform(0.0, 0.15)
+            angle = self.rng.uniform(0, 2 * np.pi)
+            return [(dist * np.cos(angle), dist * np.sin(angle), size)]
         # 0-3 vacuoles, more likely with age
         n_vac = min(3, self.rng.poisson(0.6 + 0.3 * min(n_scars, 5)))
         vacs = []
@@ -175,8 +183,8 @@ class YeastSim:
             # Position: random within cell, biased toward center
             angle = self.rng.uniform(0, 2 * np.pi)
             dist = self.rng.uniform(0.05, 0.5)  # relative to cell radius
-            # Size: 25-45% of cell radius, larger in older cells
-            base_size = self.rng.uniform(0.25, 0.45)
+            # Size: 25-47% of cell radius, larger in older cells
+            base_size = self.rng.uniform(0.25, 0.47)
             size = base_size + 0.02 * min(n_scars, 5)
             vacs.append((dist * np.cos(angle), dist * np.sin(angle), size))
         return vacs
@@ -552,6 +560,7 @@ class YeastSim:
                     self._fill_ellipse(img, cx, cy, band_r, asp, ori, val)
 
                 # ── Vacuoles: phase-bright (watery, low RI → bright in PC) ──
+                # Real vacuoles are strikingly bright — nearly matching background
                 if i < len(self._vacuoles):
                     cos_o, sin_o = np.cos(ori), np.sin(ori)
                     for vx, vy, vr in self._vacuoles[i]:
@@ -560,11 +569,12 @@ class YeastSim:
                         vac_cx = cx + int(round(wx))
                         vac_cy = cy + int(round(wy))
                         vac_r = max(2, int(round(vr * r)))
-                        # Vacuole interior: bright but not as bright as halo
-                        cv2.circle(img, (vac_cx, vac_cy), vac_r, 142, -1,
-                                   cv2.LINE_AA)
-                        # Subtle bright boundary (mini-halo effect)
-                        cv2.circle(img, (vac_cx, vac_cy), vac_r, 160, 1,
+                        # Large vacuoles brighter (more watery volume)
+                        vac_bright = 155 + min(10, int(vr * 20))
+                        cv2.circle(img, (vac_cx, vac_cy), vac_r, vac_bright,
+                                   -1, cv2.LINE_AA)
+                        # Vacuolar membrane: thin bright ring (phase boundary)
+                        cv2.circle(img, (vac_cx, vac_cy), vac_r, 172, 1,
                                    cv2.LINE_AA)
 
                 # ── Lipid droplets: very bright refractile puncta (high RI) ──
@@ -578,9 +588,9 @@ class YeastSim:
                         dr = max(1, s // 2)
                         cv2.circle(img, (lx, ly), dr, 215, -1, cv2.LINE_AA)
 
-                # Faint nucleus region (slightly darker than cytoplasm center)
+                # Faint nucleus region — barely visible in real phase contrast
                 nuc_r = max(2, int(r * 0.28))
-                nuc_val = center_val - 30 * pc  # darker in phase-dark cells
+                nuc_val = center_val - 8 * pc  # subtle: nearly same as cytoplasm
                 cv2.circle(img, (cx, cy), nuc_r, nuc_val, -1)
 
             # Draw bud if budding (even dead cells keep their buds frozen)

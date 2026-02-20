@@ -28,6 +28,7 @@ Usage:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
@@ -57,8 +58,10 @@ def _rotation_matrix(axis: np.ndarray, angle: float) -> np.ndarray:
     return np.eye(3) + np.sin(angle) * K + (1 - np.cos(angle)) * (K @ K)
 
 
-class VolvoxSim:
+class VolvoxSim(SimBase):
     """Volvox colony simulation compatible with SimulationBridge."""
+
+    continuous = True
 
     def __init__(
         self,
@@ -74,17 +77,22 @@ class VolvoxSim:
         fixed_dt: float = 1.0,
         internal_scale: int = 1,
     ):
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=fixed_dt,
+            auto_step=False, snaps_per_step=1,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,
+                ("mScarlet3(569/582)", "ORANGE"): 2,
+            },
+        )
+
         self.n_somatic = n_somatic
         self.n_gonidia = n_gonidia
         self.colony_radius = colony_radius
-        self.width = world_size
-        self.height = world_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
-        self.internal_scale = internal_scale
         self._ivw = viewport_width * internal_scale   # internal viewport width
         self._ivh = viewport_height * internal_scale   # internal viewport height
-        self.rng = np.random.default_rng(seed)
         self.rng_seed = seed
 
         # Colony state
@@ -103,8 +111,6 @@ class VolvoxSim:
         self.swim_speed = swim_speed       # px per step
         self.rotation_speed = rotation_speed  # radians per step
         self.brownian_noise = 0.5          # px per step
-        self.fixed_dt = fixed_dt
-        self._time = 0.0
 
         # Generate cell positions on sphere (local coordinates)
         self._somatic_local = _fibonacci_sphere(n_somatic, colony_radius)
@@ -124,34 +130,15 @@ class VolvoxSim:
         self.somatic_radius_px = 2.5  # rendered dot size at 40x
         self.gonidia_radius_px = 6.0  # larger reproductive cells
 
-        # Camera / device interface
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.state_devices = {}
-        self.mode = 0  # 0=BF, 1=chlorophyll, 2=transmitted
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,
-            ("mScarlet3(569/582)", "ORANGE"): 2,
-        }
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40}
-        self.current_objectiv = 40
-
-        # Depth of field per objective
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5}
-        self._dof = self._dof_table.get(self.current_objectiv, 1.5)
-
         # SLM phototaxis
         self._current_slm_mask = None
         self.phototaxis_strength = 0.15  # radians per step toward light
 
-        # Auto-step (timelapse mode)
-        self.auto_step = False
-        self.snaps_per_step = 1
+        # Auto-step counter (Volvox uses its own counter for phototaxis gating)
         self._snap_counter = 0
 
-        # Pipeline
-        self._pipeline = OpticalPipeline(
+        # Pipeline (single pipeline, not per-channel dict)
+        self._volvox_pipeline = OpticalPipeline(
             psf_sigma=0.8,
             noise={"photon_scale": 3.0, "read_std": 2.0},
             rng_seed=seed + 1000,
@@ -159,12 +146,7 @@ class VolvoxSim:
 
         # For compatibility
         self._cells = []
-        self.tissue_z = 0.0
         self._skip_pipeline = False
-
-        # Z-drift
-        self.z_drift_rate = 0.0   # µm/s
-        self.z_drift_noise = 0.0  # σ of z-jitter (µm·s⁻½, Brownian)
 
     def _get_temperature(self) -> float:
         """Read temperature from the Temperature state device (°C)."""
@@ -283,38 +265,6 @@ class VolvoxSim:
         gonidia_world = gonidia_rotated + self.colony_pos
 
         return somatic_world, gonidia_world
-
-    def set_focal_plane(self, z: float):
-        """Set the Z focal plane."""
-        self.focal_plane = z
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        """Update objective from device state."""
-        obj_label = self.state_devices.get("Objective", {}).get("label", "40x")
-        mag = self._objectif_dict.get(obj_label, 40)
-        if mag != self.current_objectiv:
-            self.current_objectiv = mag
-            self._dof = self._dof_table.get(mag, 1.5)
 
     def _render_frame(self) -> np.ndarray:
         """Render the current scene at the current focal plane.
@@ -672,25 +622,13 @@ class VolvoxSim:
 
         # Apply optical pipeline
         if not self._skip_pipeline:
-            img = self._pipeline.apply(img)
+            img = self._volvox_pipeline.apply(img)
 
-        # Exposure scaling (BF uses 2× base for transmitted light)
-        if self.mode == 0:
-            scale = min(intensity * 0.02 * exposure, 2.0)
-        else:
-            scale = intensity * 0.01 * exposure
-        img = (img.astype(np.float32) * scale).clip(0, 255).astype(np.uint8)
+        # Exposure scaling
+        img = self._apply_exposure(img, exposure, intensity)
 
         # Return grayscale
         return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    def get_z_drift(self) -> float:
-        """Return cumulative Z-drift (µm)."""
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        """Reset Z-drift to zero."""
-        self.tissue_z = 0.0
 
     def get_ground_truth(self) -> dict:
         """Return current colony state for grading."""

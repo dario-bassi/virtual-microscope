@@ -20,15 +20,18 @@ Usage via SimulationBridge:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class DictyosteliumSim:
+class DictyosteliumSim(SimBase):
     """Dictyostelium discoideum aggregation simulation.
 
     Models the starvation response: scattered amoebae begin signaling via
     cAMP, form streams, and aggregate into mounds around pacemaker centers.
     """
+
+    continuous = True
 
     STATE_VEGETATIVE = 0
     STATE_STREAMING = 1
@@ -56,47 +59,23 @@ class DictyosteliumSim:
         camp_decay: float = 0.03,       # field decay rate per step
         camp_reporter_gain: float = 1.0,  # multiplier for cAMP reporter brightness
     ):
-        self.width = world_size
-        self.height = world_size
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=fixed_dt,
+            auto_step=False, snaps_per_step=2,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,      # GFP
+                ("mScarlet3(569/582)", "ORANGE"): 2,   # cAMP-reporter
+            },
+        )
 
-        # Camera / state (SimulationBridge interface)
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.state_devices = {}
-        self.mode = 0
-        self.current_objectiv = 10
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5, 100: 0.5}
-        self._dof = 6.0
-        self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0, 100: 2.0}
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,      # GFP
-            ("mScarlet3(569/582)", "ORANGE"): 2,   # cAMP-reporter
-        }
-        self._snap_count = 0
-
-        self.rng = np.random.default_rng(seed)
         self._noise_rng = np.random.default_rng(seed + 7777)
-        self.fixed_dt = fixed_dt
-        self._time = 0.0
         self._step_count = 0
         self.n_cells = n_cells
 
-        # Auto-step support
-        self.auto_step = False
-        self.snaps_per_step = 2
+        # Auto-step dt override
         self.auto_step_dt = 1.0
-
-        # Z-drift
-        self.z_drift_rate = 0.0
-        self.z_drift_noise = 0.0
 
         # Temperature
         self._temperature = 22.0
@@ -493,9 +472,6 @@ class DictyosteliumSim:
         self.step(dt)
 
     # ── Rendering ──
-
-    def _s(self, val):
-        return int(round(val * self.internal_scale))
 
     def _cell_shape(self, i: int) -> tuple:
         """Return (major_axis, minor_axis, angle_deg) for cell i.
@@ -916,79 +892,6 @@ class DictyosteliumSim:
         img = np.clip(img + noise, 0, 255).astype(np.uint8)
         return img
 
-    def _crop_fov(self, full: np.ndarray) -> np.ndarray:
-        """Crop FOV from internal-resolution buffer, resize to viewport."""
-        s = self.internal_scale
-        ih, iw = full.shape[:2]
-        obj = self.current_objectiv
-
-        if obj == 100:
-            fov_world = 64
-        elif obj == 40:
-            fov_world = 128
-        elif obj == 20:
-            fov_world = 256
-        else:
-            fov_world = min(512, self.width)
-
-        fov_px = fov_world * s
-        # Center FOV on stage position at any magnification
-        cx_world = int(self.camera_offset[0]) + self.viewport_width // 2
-        cy_world = int(self.camera_offset[1]) + self.viewport_height // 2
-        ox = cx_world * s - fov_px // 2
-        oy = cy_world * s - fov_px // 2
-        ox = max(0, min(ox, iw - fov_px))
-        oy = max(0, min(oy, ih - fov_px))
-
-        crop = full[oy:oy + fov_px, ox:ox + fov_px]
-        if crop.shape[0] != self.viewport_height or crop.shape[1] != self.viewport_width:
-            crop = cv2.resize(crop, (self.viewport_width, self.viewport_height),
-                              interpolation=cv2.INTER_AREA)
-        return crop
-
-    def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
-        """Apply defocus blur based on tissue_z vs focal_plane."""
-        dz = abs(self.tissue_z - self.focal_plane)
-        dof = self._dof_table.get(self.current_objectiv, 6.0)
-        if dz < dof * 0.5:
-            return img
-        blur_scale = self._blur_scale_table.get(self.current_objectiv, 0.3)
-        sigma = (dz - dof * 0.5) * blur_scale
-        if sigma < 0.5:
-            return img
-        ksize = int(sigma * 4) | 1
-        return cv2.GaussianBlur(img, (ksize, ksize), sigma)
-
-    # ── SimulationBridge interface ──
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        obj_state = self.state_devices.get("Objective", {})
-        label = obj_state.get("label", obj_state.get("Label", "10x"))
-        new_obj = self._objectif_dict.get(label, 10)
-        if new_obj != self.current_objectiv:
-            self.current_objectiv = new_obj
-            self._dof = self._dof_table.get(new_obj, 6.0)
-
     def _read_temperature(self):
         temp_state = self.state_devices.get("Temperature", {})
         label = temp_state.get("label", temp_state.get("Label", "22°C"))
@@ -1031,17 +934,6 @@ class DictyosteliumSim:
         else:
             crop = self._pipeline.apply(crop)
         return crop
-
-    def set_focal_plane(self, z: float):
-        self.focal_plane = z
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        """Enable photobleaching on fluorescence channels (GFP, cAMP reporter)."""
-        self._pipeline.photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        """Reset accumulated photobleaching."""
-        self._pipeline.reset_bleach()
 
     # ── Ground truth ──
 
@@ -1116,10 +1008,3 @@ class DictyosteliumSim:
 
         return centers
 
-    # ── Z-drift helpers ──
-
-    def get_z_drift(self) -> float:
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        self.tissue_z = 0.0

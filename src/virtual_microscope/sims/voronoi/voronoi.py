@@ -1,23 +1,24 @@
 """
-VoronoiSim — drop-in replacement for MicroscopeSimOptmized.
+VoronoiSim — Confluent tissue simulation.
 
-Implements the same interface so it works with SimulationBridge and
+Implements the SimBase interface so it works with SimulationBridge and
 all existing pymmcore devices without any changes.
 
 Usage via SimulationBridge:
     sim = VoronoiSim(width=1024, height=1024, n_cells=200, seed=42)
-    bridge = SimulationBridge(sim)  # VoronoiSim quacks like MicroscopeSimOptmized
+    bridge = SimulationBridge(sim)
 """
 
 import time
 import numpy as np
 import cv2
 from scipy.spatial import Voronoi
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 from virtual_microscope.nuclear_texture import render_textured_nuclei
 
 
-class VoronoiSim:
+class VoronoiSim(SimBase):
     """Confluent tissue simulation compatible with SimulationBridge.
 
     Generates a static Voronoi-tessellated tissue that supports:
@@ -44,33 +45,28 @@ class VoronoiSim:
         internal_scale: int = 4,
         **kwargs,
     ):
-        self.width = width
-        self.height = height
-        self.internal_scale = internal_scale
-        self._iw = width * internal_scale
-        self._ih = height * internal_scale
+        super().__init__(
+            width=width, height=height,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=rng_seed, internal_scale=internal_scale,
+            mode_map={
+                ("SCFP2(434/474)", "UV"): 1,           # DAPI
+                ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
+            },
+        )
+
         self.nb_cells = nb_cells
         self.cell_type = cell_type
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
         self.base_radius = base_radius
         self.rng_seed = rng_seed
         self.textured_nuclei = textured_nuclei
         self.membrane_ruffle = membrane_ruffle
-
-        # Camera settings (same interface as MicroscopeSimOptmized)
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-
-        # State tracking (populated by setup_microscope via bridge.update_state)
-        self.state_devices = {}
-        self.mode = 0  # 0=BF, 1=nucleus, 2=membrane
         self._last_time = time.perf_counter()
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self.current_objectiv = 10
+
+        # VoronoiSim uses different blur scales (higher mag = more defocus)
+        self._blur_scale_table = {10: 0.5, 20: 1.0, 40: 2.5, 100: 5.0}
 
         # Generate tissue
-        self.rng = np.random.default_rng(rng_seed)
         self.nucleus_fraction = nucleus_fraction
 
         self.centers = self._generate_centers(jitter)
@@ -118,27 +114,16 @@ class VoronoiSim:
         self._bf_clean = None
         self._nuc_clean = None
         self._mem_clean = None
-        self._snap_count = 0  # counts snap_frame calls (for live pipeline)
 
         # Spectral crosstalk between fluorescence channels
-        # e.g., {"nuc_to_mem": 0.05, "mem_to_nuc": 0.08}
         self.crosstalk = None
 
         # Channel wavelengths (nm) for chromatic aberration
-        # Set these to enable wavelength-dependent rendering
-        self.nuc_wavelength = 0   # e.g., 461 for DAPI
-        self.mem_wavelength = 0   # e.g., 580 for RFP
+        self.nuc_wavelength = 0
+        self.mem_wavelength = 0
 
         # Extra channels (beyond BF/nucleus/membrane)
-        self._extra_channels = {}
         self._next_mode = 3  # modes 0,1,2 are BF/nuc/mem
-
-        # Data-driven channel→mode mapping (filter_label, led_label) → mode_id
-        # Subclasses / enable_*() can override this dict.
-        self._mode_map = {
-            ("SCFP2(434/474)", "UV"): 1,           # DAPI
-            ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
-        }
 
         # Pre-render full tissue images for each mode (cache for performance)
         self._bf_full = None
@@ -146,34 +131,17 @@ class VoronoiSim:
         self._mem_full = None
         self._render_full_tissue()
 
-        # Z-stack / defocus support
-        self.tissue_z = 0.0  # Z position of the monolayer (µm)
-        self._dof = 6.0  # depth of field (µm), updated per objective
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5, 100: 0.6}
-        # Blur scale: pixels of sigma per µm of defocus beyond DOF/2
-        self._blur_scale_table = {10: 0.5, 20: 1.0, 40: 2.5, 100: 5.0}
         # Per-cell Z-stack support (None = all at tissue_z, no Z-stack)
-        self.nucleus_z = None  # per-cell Z positions (µm)
-        self._nuc_z_layers = None  # dict: layer_idx -> pre-rendered image
-        self._z_layer_positions = None  # array of Z values per layer
+        self.nucleus_z = None
+        self._nuc_z_layers = None
+        self._z_layer_positions = None
 
-        # Stage drift simulation (slow XY drift over time)
-        self.stage_drift_rate = 0.0     # px per snap_frame call
-        self.stage_drift_angle = 0.0    # drift direction in radians
-        self.stage_drift_noise = 0.0    # random walk component (px per snap)
-        self._drift_accumulator = np.array([0.0, 0.0])
+        # Stage drift angle (VoronoiSim adds directional drift)
+        self.stage_drift_angle = 0.0
         self._drift_rng = np.random.default_rng(rng_seed + 7777)
 
         # Dummy _cells list (empty — no particle cells)
         self._cells = []
-
-    def _s(self, v):
-        """Scale world coordinate to internal resolution (int)."""
-        return int(round(v * self.internal_scale))
-
-    def _sf(self, v):
-        """Scale world coordinate to internal resolution (float)."""
-        return v * self.internal_scale
 
     def _nuc_center(self, i: int) -> tuple:
         """Nucleus center in world coords (offset from cell centroid)."""
@@ -936,7 +904,7 @@ class VoronoiSim:
     # ---- SimulationBridge-compatible interface ----
 
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with MicroscopeSimOptmized.snap_frame()."""
+        """Capture a frame — compatible with ScatteredCellSim.snap_frame()."""
         self._update_mode()
         self._update_objectif()
         self._snap_count += 1
@@ -981,18 +949,7 @@ class VoronoiSim:
         # Apply Z-defocus blur if focal plane != tissue plane
         viewport = self._apply_defocus(viewport)
 
-        # Apply exposure and intensity.
-        # BF (transmitted light) uses 2× base so default exposure=50 gives
-        # full contrast. Fluorescence uses standard 1× photon-collection model.
-        if self.mode == 0:
-            scale = min(intensity * 0.02 * exposure, 2.0)
-        else:
-            scale = intensity * 0.01 * exposure
-        viewport = (
-            viewport.astype(np.float32) * scale
-        ).clip(0, 255).astype(np.uint8)
-
-        # Return grayscale
+        viewport = self._apply_exposure(viewport, exposure, intensity)
         return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
 
     def _apply_stage_drift(self):
@@ -1127,79 +1084,9 @@ class VoronoiSim:
 
         return np.clip(composite, 0, 255).astype(np.uint8)
 
-    def _crop_fov(self, full):
-        """Crop FOV from internal-res buffer, resize to viewport."""
-        s = self.internal_scale
-        ih, iw = full.shape[:2]
-        out_w, out_h = self.viewport_width, self.viewport_height
-        obj = self.current_objectiv
-
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov_world = fov_map.get(obj, min(512, self.width))
-
-        fov_int = fov_world * s
-
-        # Stage center in world coords → internal coords (includes drift)
-        cx_world = int(self.camera_offset[0] + self._drift_accumulator[0]) + out_w // 2
-        cy_world = int(self.camera_offset[1] + self._drift_accumulator[1]) + out_h // 2
-        cx_int = int(cx_world * s)
-        cy_int = int(cy_world * s)
-
-        half = fov_int // 2
-        x0 = max(0, min(cx_int - half, iw - fov_int))
-        y0 = max(0, min(cy_int - half, ih - fov_int))
-
-        crop = full[y0:y0 + fov_int, x0:x0 + fov_int].copy()
-
-        if crop.shape[0] < fov_int or crop.shape[1] < fov_int:
-            bg_val = 20 if self.mode == 0 else 0
-            if len(crop.shape) == 3:
-                padded = np.full((fov_int, fov_int, crop.shape[2]), bg_val, dtype=crop.dtype)
-            else:
-                padded = np.full((fov_int, fov_int), bg_val, dtype=crop.dtype)
-            padded[:crop.shape[0], :crop.shape[1]] = crop
-            crop = padded
-
-        if crop.shape[0] > out_h:
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=cv2.INTER_AREA)
-        elif crop.shape[0] < out_h:
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-        return crop
-
-    def _update_mode(self):
-        """Update rendering mode from state devices via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filter_label = self.state_devices["Filter Wheel"]["label"]
-        led_label = self.state_devices["LED"]["label"]
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        """Update objective from state devices and set DOF."""
-        if "Objective" not in self.state_devices:
-            return
-        obj_label = self.state_devices["Objective"]["label"]
-        if obj_label in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[obj_label]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        """Set focal plane (µm). Defocus blur applied when off tissue_z."""
-        self.focal_plane = z
-
-    def update(self, dt: float = 0.016):
-        """Update simulation (no-op for static tissue)."""
-        pass
+    def _get_pad_bg(self) -> int:
+        """VoronoiSim uses darker BF background for padding."""
+        return 20 if self.mode == 0 else 0
 
     def _init_numpy_arrays(self):
         """Initialize numpy arrays (compatibility stub)."""

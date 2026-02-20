@@ -7,7 +7,7 @@ from .cell_base import CellBase
 from .cell_cycle import CellCycleNormal
 
 
-class Renderer:
+class CellCycleRenderer:
     """Fast renderer using OpenCV."""
 
     def __init__(self, width: int = 512, height: int = 512):

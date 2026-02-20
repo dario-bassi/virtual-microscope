@@ -24,11 +24,14 @@ Usage via SimulationBridge:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class PlantCellSim:
+class PlantCellSim(SimBase):
     """Onion epidermis simulation — elongated hexagonal plant cells with thick walls."""
+
+    continuous = True
 
     def __init__(
         self,
@@ -42,41 +45,18 @@ class PlantCellSim:
         seed: int = 42,
         internal_scale: int = 4,
     ):
-        self.width = world_size
-        self.height = world_size
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=0.0,
+            auto_step=False, snaps_per_step=2,
+            mode_map={
+                ("SCFP2(434/474)", "UV"): 1,
+                ("Electra1(402/454)", "BLUE"): 2,
+            },
+        )
 
-        # Camera / state
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.state_devices = {}
-        self.mode = 0
-        self.current_objectiv = 10
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5, 100: 0.5}
-        self._dof = 6.0
-        self._extra_channels = {}
-        self._mode_map = {
-            ("SCFP2(434/474)", "UV"): 1,
-            ("Electra1(402/454)", "BLUE"): 2,
-        }
-        self._snap_count = 0
-
-        self.rng = np.random.default_rng(seed)
         self._noise_rng = np.random.default_rng(seed + 5555)
-        self.fixed_dt = 0.0
-        self._time = 0.0
-        self.auto_step = False
-        self.snaps_per_step = 2
-
-        # Z-drift
-        self.z_drift_rate = 0.0   # µm/s
-        self.z_drift_noise = 0.0  # σ of z-jitter (µm·s⁻½, Brownian)
 
         # Cell parameters
         self.cell_length_range = cell_length_range
@@ -89,10 +69,11 @@ class PlantCellSim:
         self._plasmolysis_target = 0.0
         self._plasmolysis_rate = 0.05  # per step
 
-        # Optical pipeline
-        self._pipeline = OpticalPipeline()
-        self._pipeline.noise = {"photon_scale": 600, "read_noise": 1.2}
-        self._pipeline.vignette = 0.06
+        # Optical pipeline (shared across all channels)
+        _pipe = OpticalPipeline()
+        _pipe.noise = {"photon_scale": 600, "read_noise": 1.2}
+        _pipe.vignette = 0.06
+        self._pipeline = {0: _pipe, 1: _pipe, 2: _pipe}
 
         # Generate cells and render
         self._generate_cells()
@@ -100,14 +81,6 @@ class PlantCellSim:
         self._nuc_full = None
         self._mem_full = None
         self._render_full()
-
-    def _s(self, v):
-        """Scale world coordinate to internal resolution (int)."""
-        return int(round(v * self.internal_scale))
-
-    def _sf(self, v):
-        """Scale world coordinate to internal resolution (float)."""
-        return v * self.internal_scale
 
     def _wavy_rect_contour(self, half_l, half_w, cell_idx, level=0,
                            amplitude_world=1.5):
@@ -664,108 +637,8 @@ class PlantCellSim:
 
         crop = self._crop_fov(full)
         crop = self._apply_defocus(crop)
-        crop = self._pipeline.apply(crop)
+        crop = self._apply_pipeline(crop, exposure)
         return crop
-
-    def _crop_fov(self, full):
-        """Crop FOV from internal-resolution buffer, resize to viewport."""
-        s = self.internal_scale
-        ih, iw = full.shape[:2]
-        out_w, out_h = self.viewport_width, self.viewport_height
-        obj = self.current_objectiv
-
-        # FOV in world units
-        if obj == 100:
-            fov_world = 64
-        elif obj == 40:
-            fov_world = 128
-        elif obj == 20:
-            fov_world = 256
-        else:
-            fov_world = min(512, self.width)
-
-        fov_int = fov_world * s
-
-        # Stage center in world coords → internal coords
-        cx_world = int(self.camera_offset[0]) + out_w // 2
-        cy_world = int(self.camera_offset[1]) + out_h // 2
-        cx_int = int(cx_world * s)
-        cy_int = int(cy_world * s)
-
-        half = fov_int // 2
-        x0 = max(0, min(cx_int - half, iw - fov_int))
-        y0 = max(0, min(cy_int - half, ih - fov_int))
-
-        crop = full[y0:y0 + fov_int, x0:x0 + fov_int].copy()
-
-        if crop.shape[0] < fov_int or crop.shape[1] < fov_int:
-            if self.mode == 0:
-                bg = getattr(self, '_tissue_bg', 155)
-            elif self.mode == 2:
-                bg = 20  # membrane channel base
-            else:
-                bg = 0
-            padded = np.full((fov_int, fov_int), bg, dtype=crop.dtype)
-            padded[:crop.shape[0], :crop.shape[1]] = crop
-            crop = padded
-
-        if crop.shape[0] > out_h:
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=cv2.INTER_AREA)
-        elif crop.shape[0] < out_h:
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-        return crop
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("label", obj.get("Label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        self.focal_plane = z
-
-    def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
-        """Apply defocus blur based on Z-drift distance from focal plane."""
-        dz = abs(self.focal_plane - self.tissue_z)
-        if dz < 0.5:
-            return img
-        sigma = min(dz * 0.5, 12.0)
-        ksize = int(sigma * 4) | 1
-        return cv2.GaussianBlur(img, (ksize, ksize), sigmaX=sigma)
-
-    def get_z_drift(self) -> float:
-        """Return cumulative Z-drift (µm)."""
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        """Reset Z-drift to zero."""
-        self.tissue_z = 0.0
-
-    def update_state(self, dict_state: dict):
-        self.state_devices = dict_state
 
     def apply_salt(self, concentration: float = 0.5):
         """Apply hypertonic salt solution to induce plasmolysis.

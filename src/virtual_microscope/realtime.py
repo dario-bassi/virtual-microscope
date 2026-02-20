@@ -31,12 +31,14 @@ class RealtimeEngine:
     """
 
     def __init__(self, sim, time_scale: float = 1.0, tick_hz: int = 10,
-                 max_dt: float = 1.0, idle_timeout: float = 0.0):
+                 max_dt: float = 1.0, idle_timeout: float = 0.0,
+                 bridge=None):
         self._sim = sim
         self._time_scale = time_scale
         self._tick_hz = tick_hz
         self._max_dt = max_dt
         self._idle_timeout = idle_timeout  # seconds; 0 = disabled
+        self._bridge = bridge  # SimulationBridge ref (for SLM processor access)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
@@ -66,8 +68,14 @@ class RealtimeEngine:
         self._last_snap_time = time.monotonic()
 
     def touch(self):
-        """Record activity (called on each snap to reset idle timer)."""
+        """Record activity (called on each snap to reset idle timer).
+
+        Also wakes the engine from idle-paused state so that simulations
+        resume automatically when the user starts snapping again.
+        """
         self._last_snap_time = time.monotonic()
+        if self._paused:
+            self._paused = False
 
     def start(self):
         """Start the background dynamics thread."""
@@ -129,5 +137,9 @@ class RealtimeEngine:
             with self._lock:
                 try:
                     step_fn(dt)
+                    # Tick SLM processor so stimulation decays
+                    if (self._bridge is not None
+                            and self._bridge._slm_processor is not None):
+                        self._bridge._slm_processor.tick(dt)
                 except Exception:
                     logger.exception("RealtimeEngine step error")

@@ -13,7 +13,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     from virtual_microscope.backends.particle import create_sim
 
     sim = create_sim(nb_cells=50, rng_seed=seed)
-    # MicroscopeSimOptmized requires state_devices for mode selection
+    # ScatteredCellSim requires state_devices for mode selection
     sim.state_devices = {
         "Filter Wheel": {"label": "Electra1(402/454)"},
         "LED": {"label": "CYAN"},

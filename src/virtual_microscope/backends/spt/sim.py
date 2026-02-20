@@ -44,11 +44,14 @@ SPT physics constraint (IMPORTANT for challenge design):
 import numpy as np
 import cv2
 from scipy.ndimage import gaussian_filter
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class SPTSim:
+class SPTSim(SimBase):
     """Single-particle tracking simulation with multiple diffusion populations."""
+
+    continuous = True
 
     PX_SCALE = 0.1  # µm per world pixel
 
@@ -71,41 +74,19 @@ class SPTSim:
         seed: int = 42,
         fixed_dt: float = 0.0,
     ):
-        self.width = world_size
-        self.height = world_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=4, fixed_dt=fixed_dt,
+            auto_step=False, snaps_per_step=1,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,
+            },
+        )
+
         self.world_pixel_size_um = 0.1  # 0.1 µm per world pixel (SPT nanoscale)
-        self.internal_scale = 4  # internal rendering resolution
-        self._iw = world_size * self.internal_scale
-        self._ih = world_size * self.internal_scale
-
-        self.rng = np.random.default_rng(seed)
         self._noise_rng = np.random.default_rng(seed + 9999)
-        self.fixed_dt = fixed_dt
-        self._time = 0.0
         self._step_count = 0
-
-        # SimulationBridge interface
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.state_devices = {}
-        self.mode = 1  # default to SPT channel
-        self.current_objectiv = 40   # start at 40x for overview
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5, 100: 0.6}
-        self._dof = 1.5
-        self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0, 100: 2.0}
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,
-        }
-        self._snap_count = 0
-        self.auto_step = False
-        self.snaps_per_step = 1
-        self.z_drift_rate = 0.0
-        self.z_drift_noise = 0.0
 
         # Physics parameters (store in µm units for diffusion calc)
         self.D_free = D_free
@@ -241,55 +222,12 @@ class SPTSim:
             self.tissue_z += (self.z_drift_rate * dt +
                               self._noise_rng.normal(0, max(self.z_drift_noise * np.sqrt(dt), 0)))
 
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        """Sync current_objectiv from state_devices."""
-        obj_raw = self.state_devices.get("Objective", 1)
-        # state_devices stores either int or dict {'state': '3', 'label': '100x'}
-        if isinstance(obj_raw, dict):
-            try:
-                obj_state = int(obj_raw.get("state", 1))
-            except (ValueError, TypeError):
-                obj_state = 1
-        elif isinstance(obj_raw, int):
-            obj_state = obj_raw
-        else:
-            try:
-                obj_state = int(obj_raw)
-            except (ValueError, TypeError):
-                obj_state = 1
-        mags = [10, 20, 40, 100]
-        if 0 <= obj_state < len(mags):
-            self.current_objectiv = mags[obj_state]
-        self._dof = self._dof_table.get(self.current_objectiv, 1.5)
-
     def snap_frame(self, mask=None, exposure: float = 50.0,
                    intensity: float = 1.0, **kwargs) -> np.ndarray:
         """Render current state. Returns uint8 (H, W, 3) image."""
         self._update_mode()
         self._update_objectif()
-        if self.auto_step:
-            for _ in range(self.snaps_per_step):
-                self.step()
+        self._auto_step_tick()
         self._snap_count += 1
 
         if self.mode == 0:

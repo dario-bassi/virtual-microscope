@@ -38,11 +38,14 @@ Usage:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class MicrofluidicsSim:
+class MicrofluidicsSim(SimBase):
     """Microfluidic channel simulation with flowing cells."""
+
+    continuous = True
 
     def __init__(self, n_cells=30, channel_width=100, flow_speed=3.0,
                  world_size=512, seed=42, viewport_width=512, viewport_height=512,
@@ -57,52 +60,28 @@ class MicrofluidicsSim:
             n_traps: number of trapping constrictions (0 = none)
             gradient: whether to add a chemical gradient across channel width
         """
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=1.0,
+            auto_step=False, snaps_per_step=1,
+            mode_map={
+                ("SCFP2(434/474)", "UV"): 1,
+                ("TagGFP2(483/506)", "GREEN"): 2,
+            },
+        )
+
         self.n_cells = n_cells
         self.channel_width = channel_width
         self.flow_speed = flow_speed
-        self.width = world_size
-        self.height = world_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
         self._seed = seed
         self.n_traps = n_traps
         self.has_gradient = gradient
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
-
-        # SimulationBridge interface
-        self.mode = 0
-        self.camera_offset = [0, 0]
-        self.state_devices = {}
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.current_objectiv = 10
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5, 100: 0.5}
-        self._dof = 6.0
-        self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0, 100: 2.0}
-        self._extra_channels = {}
-        self._mode_map = {
-            ("SCFP2(434/474)", "UV"): 1,
-            ("TagGFP2(483/506)", "GREEN"): 2,
-        }
-
-        # Z-drift (thermal/mechanical drift during timelapse)
-        self.z_drift_rate = 0.0   # µm/s
-        self.z_drift_noise = 0.0  # σ of z-jitter (µm·s⁻½, Brownian)
 
         # Optical pipeline per channel
         self._pipeline_bf = OpticalPipeline.fluorescence()
         self._pipeline_nuc = OpticalPipeline.fluorescence()
         self._pipeline_mem = OpticalPipeline.fluorescence()
-
-        # Time
-        self.time = 0.0
-        self.fixed_dt = 1.0
-        self._snap_count = 0
-        self.auto_step = False
-        self.snaps_per_step = 1
 
         # Perfusion (off by default)
         self._perfusion_enabled = False
@@ -114,6 +93,9 @@ class MicrofluidicsSim:
         self._reagent_field = None
         self._cell_drug_exposure = None
         self._drug_flow_speed = None
+
+        # Time (separate from SimBase._time; used for perfusion tracking)
+        self.time = 0.0
 
         # Initialize
         self._rng = np.random.default_rng(seed)
@@ -444,12 +426,6 @@ class MicrofluidicsSim:
         """Background dynamics — same as step (no SLM effects)."""
         self.step(dt)
 
-    # ── Internal scale helpers ──
-
-    def _s(self, v):
-        """Scale a world-pixel value to internal resolution (int)."""
-        return int(round(v * self.internal_scale))
-
     # ── Rendering ──
 
     def _cell_elongation(self, i: int) -> float:
@@ -767,27 +743,6 @@ class MicrofluidicsSim:
 
         return np.clip(img, 0, 255).astype(np.uint8)
 
-    def _crop_fov(self, full: np.ndarray) -> np.ndarray:
-        """Crop FOV from internal-res image and resize to viewport."""
-        s = self.internal_scale
-        out_w, out_h = self.viewport_width, self.viewport_height
-        obj = self.current_objectiv
-
-        fov_world = {100: 64, 40: 128, 20: 256}.get(obj, 512)
-        fov_int = fov_world * s
-
-        cx = int(self.camera_offset[0]) * s + out_w * s // 2
-        cy = int(self.camera_offset[1]) * s + out_h * s // 2
-
-        ih, iw = full.shape[:2]
-        half = fov_int // 2
-        x0 = max(0, min(cx - half, iw - fov_int))
-        y0 = max(0, min(cy - half, ih - fov_int))
-        crop = full[y0:y0 + fov_int, x0:x0 + fov_int]
-
-        interp = cv2.INTER_AREA if fov_int > out_w else cv2.INTER_LINEAR
-        return cv2.resize(crop, (out_w, out_h), interpolation=interp)
-
     def _apply_slm_release(self, mask: np.ndarray):
         """Release trapped cells that are illuminated by SLM mask.
 
@@ -823,17 +778,13 @@ class MicrofluidicsSim:
         """Capture one frame from the current mode/objective."""
         self._update_mode()
         self._update_objectif()
-        self._snap_count += 1
 
         # SLM-controlled cell release (before stepping)
         if mask is not None:
             self._apply_slm_release(mask)
 
-        # Auto-step: advance simulation on snap
-        if self.auto_step:
-            sps = self.snaps_per_step
-            if self._snap_count > 0 and self._snap_count % sps == 0:
-                self.step(self.fixed_dt)
+        self._auto_step_tick()
+        self._snap_count += 1
 
         if self.mode == 1:
             full = self._render_nuc()
@@ -935,60 +886,6 @@ class MicrofluidicsSim:
 
         return gt
 
-    # ── SimulationBridge interface ──
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("label", obj.get("Label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        self.focal_plane = z
-
-    def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
-        """Apply defocus blur based on distance from focal plane."""
-        dz = abs(self.focal_plane - self.tissue_z)
-        half_dof = self._dof / 2.0
-        if dz <= half_dof:
-            return img
-        sigma = min((dz - half_dof) * self._blur_scale_table.get(
-            self.current_objectiv, 0.5), 30.0)
-        if sigma < 0.3:
-            return img
-        return cv2.GaussianBlur(img, (0, 0), sigma)
-
-    def get_z_drift(self) -> float:
-        """Return cumulative Z-drift in µm."""
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        """Reset Z-drift to initial position."""
-        self.tissue_z = 0.0
-
     def enable_photobleaching(self, rate: float = 0.001):
         """Enable photobleaching on fluorescence channels.
 
@@ -1002,6 +899,3 @@ class MicrofluidicsSim:
         """Reset accumulated photobleaching."""
         self._pipeline_nuc.reset_bleach()
         self._pipeline_mem.reset_bleach()
-
-    def update_state(self, dict_state: dict):
-        self.state_devices = dict_state

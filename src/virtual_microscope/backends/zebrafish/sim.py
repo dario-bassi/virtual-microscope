@@ -23,43 +23,33 @@ Usage:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class ZebrafishSim:
+class ZebrafishSim(SimBase):
     """48hpf zebrafish embryo with beating heart and blood flow."""
+
+    continuous = True
 
     def __init__(self, n_rbc=30, cardiac_freq=2.5,
                  world_width=1024, world_height=512, seed=42,
                  viewport_width=512, viewport_height=512,
                  internal_scale=2):
-        self.width = world_width
-        self.height = world_height
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=world_width, height=world_height,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=1.0,
+            auto_step=False, snaps_per_step=1,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,
+                ("mScarlet3(569/582)", "ORANGE"): 2,
+            },
+        )
+
         self._seed = seed
-        self.internal_scale = internal_scale
-        self._iw = world_width * internal_scale
-        self._ih = world_height * internal_scale
-
-        # SimulationBridge interface
-        self.mode = 0
-        self.camera_offset = [0, 0]
-        self.state_devices = {}
-        self.current_objectiv = 10
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
+        # Override DOF table (zebrafish uses 3.0 for 20x instead of default 4.0)
         self._dof_table = {10: 6.0, 20: 3.0, 40: 1.5, 100: 0.6}
-        self._dof = 6.0
-        self._snap_count = 0
-
-        # Timing
-        self._time = 0.0
-        self.auto_step = False
-        self.snaps_per_step = 1
-        self.fixed_dt = 1.0
 
         # Cardiac
         self._cardiac_freq = cardiac_freq
@@ -71,16 +61,6 @@ class ZebrafishSim:
 
         # Anesthesia (Tricaine/MS-222)
         self._anesthesia_factor = 1.0  # 1.0 = no effect, 0.0 = full arrest
-
-        # Z-drift
-        self.z_drift_rate = 0.0
-        self.z_drift_noise = 0.0
-
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,
-            ("mScarlet3(569/582)", "ORANGE"): 2,
-        }
 
         self._pipeline = {
             0: OpticalPipeline(
@@ -94,7 +74,7 @@ class ZebrafishSim:
                 vignette=0.10, rng_seed=seed + 702),
         }
 
-        self._rng = np.random.default_rng(seed)
+        self._rng = self.rng
 
         self._generate_body()
         self._generate_vasculature()
@@ -334,12 +314,6 @@ class ZebrafishSim:
 
     # ── Helpers ──
 
-    def _s(self, v):
-        return int(round(v * self.internal_scale))
-
-    def _sf(self, v):
-        return v * self.internal_scale
-
     def _cardiac_phase(self):
         return 2 * np.pi * self._cardiac_freq * self._time
 
@@ -413,9 +387,7 @@ class ZebrafishSim:
         self._read_temperature()
         self._read_anesthesia()
 
-        if (self.auto_step and self._snap_count > 0
-                and self._snap_count % self.snaps_per_step == 0):
-            self.step(self.fixed_dt)
+        self._auto_step_tick()
         self._snap_count += 1
 
         if self.mode == 0:
@@ -428,20 +400,8 @@ class ZebrafishSim:
             full = self._render_bf()
 
         viewport = self._crop_fov(full)
-
-        if self.mode == 0:
-            scale = min(intensity * 0.02 * exposure, 2.0)
-        else:
-            scale = intensity * 0.01 * exposure
-        viewport = (viewport.astype(np.float32) * scale).clip(0, 255).astype(
-            np.uint8)
-
-        if self.mode in self._pipeline:
-            pipe = self._pipeline[self.mode]
-            if self.mode > 0 and pipe.photobleach_rate > 0:
-                viewport = pipe.apply_with_bleach(viewport, exposure_ms=exposure)
-            else:
-                viewport = pipe.apply(viewport, exposure_ms=exposure)
+        viewport = self._apply_exposure(viewport, exposure, intensity)
+        viewport = self._apply_pipeline(viewport, exposure)
 
         return viewport
 
@@ -917,35 +877,6 @@ class ZebrafishSim:
 
     # ── Device state ──
 
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("label", obj.get("Label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
     def _read_temperature(self):
         if "Temperature" not in self.state_devices:
             return
@@ -982,12 +913,6 @@ class ZebrafishSim:
         q10 = self._q10 ** ((self._temperature - 28.0) / 10.0)
         self._cardiac_freq = (self._base_cardiac_freq * q10
                               * self._anesthesia_factor)
-
-    def set_focal_plane(self, z: float):
-        self.focal_plane = z
-
-    def update_state(self, dict_state: dict):
-        self.state_devices = dict_state
 
     # ── Dynamics ──
 
@@ -1077,26 +1002,6 @@ class ZebrafishSim:
 
     def get_pericardial_edema(self):
         return self._pericardial_edema
-
-    # ── Z-drift ──
-
-    def get_z_drift(self) -> float:
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        self.tissue_z = 0.0
-
-    # ── Photobleaching ──
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        for m in [1, 2]:
-            if m in self._pipeline:
-                self._pipeline[m].photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        for m in [1, 2]:
-            if m in self._pipeline:
-                self._pipeline[m].reset_bleach()
 
     # ── Ground truth ──
 

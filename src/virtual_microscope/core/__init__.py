@@ -1,3 +1,5 @@
-"""Core particle simulator and rendering engine (legacy MicroscopeSimOptmized)."""
+"""Core particle simulator and rendering engine."""
 
-from virtual_microscope.core.microscope_sim_optimized import MicroscopeSimOptmized
+from virtual_microscope.core.scattered_cell_sim import ScatteredCellSim
+from virtual_microscope.core.cell_cycle_manager import CellCycleManager
+from virtual_microscope.core.cell_cycle_renderer import CellCycleRenderer

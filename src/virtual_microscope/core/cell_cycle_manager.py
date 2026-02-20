@@ -3,7 +3,7 @@ from typing import List, Optional, TYPE_CHECKING
 from virtual_microscope.core.cell_cycle import CellCycleNormal
 
 if TYPE_CHECKING:
-    from virtual_microscope.core.microscope_sim_optimized import MicroscopeSimOptmized
+    from virtual_microscope.core.scattered_cell_sim import ScatteredCellSim
 
 
 class CellCycleManager:
@@ -109,7 +109,7 @@ class CellCycleManager:
         
         return sister
     
-    def update(self, cells: List[CellCycleNormal], simulation: 'MicroscopeSimOptmized') -> None:
+    def update(self, cells: List[CellCycleNormal], simulation: 'ScatteredCellSim') -> None:
         """Update cell population: handle divisions and deaths.
         
         This should be called once per simulation timestep. It:

@@ -12,10 +12,11 @@ Usage via SimulationBridge:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class CelegansSim:
+class CelegansSim(SimBase):
     """C. elegans (nematode) simulation compatible with SimulationBridge.
 
     Renders a single worm on a large world (default 2048x2048).
@@ -27,6 +28,8 @@ class CelegansSim:
       - mode 1: GFP-pharynx — bright spot in head region (nucleus channel)
       - mode 2: mCherry-body — dim body wall fluorescence (membrane channel)
     """
+
+    continuous = True
 
     def __init__(
         self,
@@ -43,32 +46,18 @@ class CelegansSim:
         seed: int = 42,
         fixed_dt: float = 0.0,
     ):
-        self.width = world_size
-        self.height = world_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=1, fixed_dt=fixed_dt,
+            auto_step=True, snaps_per_step=1,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,      # GFP-pharynx
+                ("mScarlet3(569/582)", "ORANGE"): 2,   # mCherry-body
+            },
+        )
 
-        # Camera / state (SimulationBridge interface)
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.state_devices = {}
-        self.mode = 0
-        self.current_objectiv = 10
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40}
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5}
-        self._dof = 6.0
-        self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0}
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,      # GFP-pharynx
-            ("mScarlet3(569/582)", "ORANGE"): 2,   # mCherry-body
-        }
-        self._snap_count = 0
-
-        # Z-drift (thermal/mechanical drift during timelapse)
-        self.z_drift_rate = 0.0   # µm/s
-        self.z_drift_noise = 0.0  # σ of z-jitter (µm·s⁻½, Brownian)
+        self._noise_rng = np.random.default_rng(seed + 9999)
 
         # Worm body parameters
         self.worm_length = worm_length
@@ -78,10 +67,6 @@ class CelegansSim:
         self.wave_frequency = wave_frequency
         self.wave_amplitude = wave_amplitude
         self.wavelength = wavelength
-        self.fixed_dt = fixed_dt
-
-        self.rng = np.random.default_rng(seed)
-        self._noise_rng = np.random.default_rng(seed + 9999)
 
         # Optical pipelines per channel
         self._pipeline = {
@@ -96,13 +81,6 @@ class CelegansSim:
                 vignette=0.12, rng_seed=seed + 102),
         }
 
-        # Auto-step: if True, each snap_frame() advances the worm.
-        # If False, the caller must call step() explicitly.
-        self.auto_step = True
-        # snaps_per_step: how many snap_frame() calls before one step()
-        # (e.g., 2 for nuc+mem per timepoint). Default 1 = step every snap.
-        self.snaps_per_step = 1
-
         # Worm state: position and heading
         self._head_pos = np.array([
             world_size / 2.0,
@@ -110,7 +88,6 @@ class CelegansSim:
         ], dtype=np.float64)
         self._heading = self.rng.uniform(0, 2 * np.pi)
         self._phase = 0.0
-        self._time = 0.0
 
         # Turn dynamics — worm occasionally changes direction
         self._turn_rate = 0.0  # current angular velocity (rad/s)
@@ -126,11 +103,6 @@ class CelegansSim:
 
         # Background texture (agar surface)
         self._bg_texture = self._generate_background()
-
-        # Stage drift (not used by default, kept for interface compat)
-        self.stage_drift_rate = 0.0
-        self.stage_drift_noise = 0.0
-        self._drift_accumulator = np.array([0.0, 0.0])
 
         # Drug response state
         self._drug_active = False
@@ -644,12 +616,7 @@ class CelegansSim:
         self._update_mode()
         self._update_objectif()
 
-        # Step simulation forward at the START of each snap cycle
-        # (not mid-cycle, so all channels in a frame see the same position)
-        if (self.auto_step and self._snap_count > 0
-                and self._snap_count % self.snaps_per_step == 0):
-            self.step()
-
+        self._auto_step_tick()
         self._snap_count += 1
 
         # Render full-world image
@@ -692,20 +659,9 @@ class CelegansSim:
         # Defocus
         viewport = self._apply_defocus(viewport)
 
-        # Optical pipeline (PSF, noise, vignetting)
-        if self.mode in self._pipeline:
-            pipe = self._pipeline[self.mode]
-            if self.mode > 0 and getattr(pipe, 'photobleach_rate', 0) > 0:
-                viewport = pipe.apply_with_bleach(viewport, exposure_ms=exposure)
-            else:
-                viewport = pipe.apply(viewport, exposure_ms=exposure)
-
-        # Exposure and intensity (BF uses 2× base for transmitted light)
-        if self.mode == 0:
-            scale = min(intensity * 0.02 * exposure, 2.0)
-        else:
-            scale = intensity * 0.01 * exposure
-        viewport = (viewport.astype(np.float32) * scale).clip(0, 255).astype(np.uint8)
+        # Optical pipeline, exposure
+        viewport = self._apply_pipeline(viewport, exposure)
+        viewport = self._apply_exposure(viewport, exposure, intensity)
 
         # Return grayscale
         return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
@@ -749,73 +705,9 @@ class CelegansSim:
             blurred = cv2.addWeighted(blurred, opacity, bg, 1.0 - opacity, 0)
         return blurred
 
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        """Update objective from state devices."""
-        if "Objective" not in self.state_devices:
-            return
-        obj_label = self.state_devices["Objective"]["label"]
-        if obj_label in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[obj_label]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        """Set focal plane (µm)."""
-        self.focal_plane = z
-
-    def get_z_drift(self) -> float:
-        """Return cumulative Z-drift (µm)."""
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        """Reset Z-drift to zero."""
-        self.tissue_z = 0.0
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        """Enable photobleaching on fluorescence channels (mode 1, 2)."""
-        for mode in [1, 2]:
-            if mode in self._pipeline:
-                self._pipeline[mode].photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        """Reset photobleaching state on all pipelines."""
-        for mode in [1, 2]:
-            if mode in self._pipeline:
-                self._pipeline[mode].photobleach_rate = 0.0
-                if hasattr(self._pipeline[mode], '_bleach_map'):
-                    self._pipeline[mode]._bleach_map = None
-
-    def update_state(self, dict_state: dict):
-        """Called by SimulationBridge when device state changes."""
-        self.state_devices = dict_state
-
-    def update(self, dt: float = 0.016):
-        """Update simulation (compatibility)."""
-        self.step(dt)
-
     def reset(self, seed: int = None):
         """Reset worm to initial state. Optionally with a new seed."""
-        if seed is not None:
-            self.rng = np.random.default_rng(seed)
+        super().reset(seed)
         self._head_pos[:] = [self.width / 2.0, self.height / 2.0]
         self._heading = self.rng.uniform(0, 2 * np.pi)
         self._phase = 0.0

@@ -30,6 +30,7 @@ Usage via SimulationBridge:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
@@ -84,7 +85,7 @@ TISSUE_TYPES = {
 }
 
 
-class HistologySim:
+class HistologySim(SimBase):
     """H&E stained tissue section simulation with high-resolution rendering.
 
     Channels:
@@ -167,39 +168,28 @@ class HistologySim:
         internal_scale: int = 4,
         grade: int = 0,
     ):
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale,
+            mode_map={
+                ("SCFP2(434/474)", "UV"): 1,           # hematoxylin
+                ("obeYFP(514/528)", "GREEN"): 2,       # eosin
+            },
+        )
+
         self.tissue_type = tissue_type
-        self.width = world_size
-        self.height = world_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
         self.n_nuclei = n_nuclei
         self._seed = seed
         self._rng = np.random.default_rng(seed)
         self.grade = max(0, min(3, grade))
         self._grade_profile = self.GRADE_PROFILES[self.grade]
 
-        # High-res rendering
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
-
-        # SimulationBridge interface
-        self.camera_offset = [0, 0]
-        self.mode = 0  # 0=BF, 1=nuclei, 2=eosin
-        self.state_devices = {}
-        self.current_objectiv = 10
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self._extra_channels = {}
-        self._mode_map = {
-            ("SCFP2(434/474)", "UV"): 1,           # hematoxylin
-            ("obeYFP(514/528)", "GREEN"): 2,       # eosin
-        }
-
         # RGB camera mode — snap_frame returns (H, W, 3) uint8
         self.rgb_mode = True
 
-        # Optical pipeline
-        self._pipeline = OpticalPipeline()
+        # Optical pipeline (single instance, not per-channel dict)
+        self._histo_pipeline = OpticalPipeline()
 
         # Storage for nuclei positions and properties (world coordinates)
         self._nuclei_x = np.array([], dtype=np.float32)
@@ -244,16 +234,6 @@ class HistologySim:
         self._generate_tissue()
         self._generate_necrosis()
         self._render_full()
-
-    # -- Internal coordinate helpers --
-
-    def _s(self, world_val):
-        """Scale a world coordinate to internal pixels."""
-        return int(round(world_val * self.internal_scale))
-
-    def _sf(self, world_val):
-        """Scale a world value to internal pixels (float)."""
-        return world_val * self.internal_scale
 
     # -- Irregular contour generation --
 
@@ -1611,38 +1591,6 @@ class HistologySim:
 
     # -- SimulationBridge interface --
 
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        """Update objective magnification from state_devices."""
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("label", obj.get("Label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-
-    def set_focal_plane(self, z):
-        pass
-
     def snap_frame(self, mask=None, exposure=50, intensity=100, **kwargs):
         """Return a viewport-cropped image of the current channel.
 
@@ -1661,66 +1609,11 @@ class HistologySim:
             full = self._bf_full
 
         crop = self._crop_fov(full)
-        crop = self._pipeline.apply(crop)
+        crop = self._histo_pipeline.apply(crop)
 
         # Ensure 3-channel output for RGB mode
         if self.rgb_mode and crop.ndim == 2:
             crop = np.stack([crop, crop, crop], axis=-1)
-
-        return crop
-
-    def _crop_fov(self, full: np.ndarray) -> np.ndarray:
-        """Crop FOV from high-res buffer, downsample to viewport.
-
-        Handles both 2D grayscale and 3D RGB images.
-        """
-        s = self.internal_scale
-        ih, iw = full.shape[:2]
-        is_rgb = full.ndim == 3
-        out_w, out_h = self.viewport_width, self.viewport_height
-        obj = self.current_objectiv
-
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov_world = fov_map.get(obj, 512)
-
-        fov_internal = fov_world * s
-
-        # Stage center in world coords
-        cx_world = int(self.camera_offset[0]) + out_w // 2
-        cy_world = int(self.camera_offset[1]) + out_h // 2
-
-        cx_int = int(cx_world * s)
-        cy_int = int(cy_world * s)
-
-        half = fov_internal // 2
-        x0 = cx_int - half
-        y0 = cy_int - half
-
-        x0 = max(0, min(x0, iw - fov_internal))
-        y0 = max(0, min(y0, ih - fov_internal))
-
-        crop = full[y0 : y0 + fov_internal, x0 : x0 + fov_internal].copy()
-
-        if crop.shape[0] < fov_internal or crop.shape[1] < fov_internal:
-            if is_rgb:
-                padded = np.full(
-                    (fov_internal, fov_internal, 3),
-                    HE_GLASS.astype(np.uint8),
-                    dtype=crop.dtype,
-                )
-            else:
-                bg = 240
-                padded = np.full(
-                    (fov_internal, fov_internal), bg, dtype=crop.dtype
-                )
-            padded[: crop.shape[0], : crop.shape[1]] = crop
-            crop = padded
-
-        if crop.shape[0] != out_h or crop.shape[1] != out_w:
-            interp = (
-                cv2.INTER_AREA if crop.shape[0] > out_h else cv2.INTER_LINEAR
-            )
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=interp)
 
         return crop
 

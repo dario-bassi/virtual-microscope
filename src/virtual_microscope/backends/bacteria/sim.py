@@ -14,10 +14,11 @@ Usage via SimulationBridge:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class BacteriaSim:
+class BacteriaSim(SimBase):
     """E. coli bacteria simulation with run-and-tumble motility.
 
     Channels:
@@ -25,6 +26,8 @@ class BacteriaSim:
       - mode 1: GFP fluorescence — bright rods on dark background
       - mode 2: DAPI (DNA stain) — bright spots at cell centers
     """
+
+    continuous = True
 
     def __init__(
         self,
@@ -37,41 +40,19 @@ class BacteriaSim:
         internal_scale: int = 4,
         boundary_mode: str = "reflect",
     ):
-        self.width = world_size
-        self.height = world_size
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=fixed_dt,
+            auto_step=True, snaps_per_step=1,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,  # GFP
+                ("SCFP2(434/474)", "UV"): 2,       # DAPI
+            },
+        )
 
-        # Camera / state (SimulationBridge interface)
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.state_devices = {}
-        self.mode = 0
-        self.current_objectiv = 10
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5, 100: 0.6}
-        self._dof = 6.0
-        self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0, 100: 2.0}
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,  # GFP
-            ("SCFP2(434/474)", "UV"): 2,       # DAPI
-        }
-        self._snap_count = 0
-
-        self.rng = np.random.default_rng(seed)
         self._noise_rng = np.random.default_rng(seed + 7777)
-        self.fixed_dt = fixed_dt
         self.boundary_mode = boundary_mode  # "reflect" or "periodic"
-        self._time = 0.0
-
-        # Z-drift (thermal/mechanical drift during timelapse)
-        self.z_drift_rate = 0.0   # µm/s (positive = tissue drifts up)
-        self.z_drift_noise = 0.0  # σ of z-jitter (µm·s⁻½, Brownian)
 
         # ── Bacteria state arrays ──
         margin = 60
@@ -124,15 +105,6 @@ class BacteriaSim:
         self._phototaxis_enabled = False
         self._phototaxis_speed_factor = 0.2  # speed in light (fraction of normal)
         self._slm_mask = None                # world-coordinate boolean mask
-
-        # ── Auto-step ──
-        self.auto_step = True
-        self.snaps_per_step = 1
-
-        # ── Stage drift ──
-        self.stage_drift_rate = 0.0
-        self.stage_drift_noise = 0.0
-        self._drift_accumulator = np.array([0.0, 0.0])
 
         # ── Cold-induced filamentation ──
         # Tracks cumulative elongation per cell at cold temperatures.
@@ -730,14 +702,6 @@ class BacteriaSim:
 
     # ── Rendering ──
 
-    def _s(self, v):
-        """Scale world coordinate to internal resolution (int)."""
-        return int(round(v * self.internal_scale))
-
-    def _sf(self, v):
-        """Scale world coordinate to internal resolution (float)."""
-        return v * self.internal_scale
-
     @staticmethod
     def _capsule_pts(cx, cy, half_len, half_wid, angle_rad, n_cap=8):
         """Contour points for a capsule (stadium) shape.
@@ -1000,11 +964,7 @@ class BacteriaSim:
                 self._slm_mask = None
         # else: mask is None (non-SLM channel snap) → keep cached mask active
 
-        # Auto-step
-        if (self.auto_step and self._snap_count > 0
-                and self._snap_count % self.snaps_per_step == 0):
-            self.step()
-
+        self._auto_step_tick()
         self._snap_count += 1
 
         # Render at internal resolution
@@ -1028,143 +988,9 @@ class BacteriaSim:
 
         viewport = self._crop_fov(full_img)
         viewport = self._apply_defocus(viewport)
-
-        if self.mode in self._pipeline:
-            pipe = self._pipeline[self.mode]
-            if pipe.photobleach_rate > 0 and self.mode > 0:
-                viewport = pipe.apply_with_bleach(viewport, exposure_ms=exposure)
-            else:
-                viewport = pipe.apply(viewport, exposure_ms=exposure)
-
-        # Exposure scaling: fluorescence uses standard photon-collection model;
-        # BF (transmitted light) uses 2× base so default exposure=50 gives
-        # full contrast (real transmitted-light images are bright at ~50 ms).
-        if self.mode == 0:
-            scale = min(intensity * 0.02 * exposure, 2.0)
-        else:
-            scale = intensity * 0.01 * exposure
-        viewport = (
-            viewport.astype(np.float32) * scale
-        ).clip(0, 255).astype(np.uint8)
-
+        viewport = self._apply_pipeline(viewport, exposure)
+        viewport = self._apply_exposure(viewport, exposure, intensity)
         return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
-
-    def _crop_fov(self, full):
-        """Crop FOV from internal-resolution buffer, resize to viewport."""
-        s = self.internal_scale
-        ih, iw = full.shape[:2]
-        out_w, out_h = self.viewport_width, self.viewport_height
-        obj = self.current_objectiv
-
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov_world = fov_map.get(obj, min(512, self.width))
-
-        fov_int = fov_world * s
-
-        # Stage center in world coords → internal coords
-        cx_world = int(self.camera_offset[0] + self._drift_accumulator[0]) + out_w // 2
-        cy_world = int(self.camera_offset[1] + self._drift_accumulator[1]) + out_h // 2
-        cx_int = int(cx_world * s)
-        cy_int = int(cy_world * s)
-
-        half = fov_int // 2
-        x0 = max(0, min(cx_int - half, iw - fov_int))
-        y0 = max(0, min(cy_int - half, ih - fov_int))
-
-        crop = full[y0:y0 + fov_int, x0:x0 + fov_int].copy()
-
-        # Pad if needed
-        ch = crop.shape[2] if crop.ndim == 3 else 0
-        if crop.shape[0] < fov_int or crop.shape[1] < fov_int:
-            bg = 140 if self.mode == 0 else 0
-            if ch > 0:
-                padded = np.full((fov_int, fov_int, ch), bg, dtype=crop.dtype)
-            else:
-                padded = np.full((fov_int, fov_int), bg, dtype=crop.dtype)
-            padded[:crop.shape[0], :crop.shape[1]] = crop
-            crop = padded
-
-        if crop.shape[0] > out_h:
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=cv2.INTER_AREA)
-        elif crop.shape[0] < out_h:
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-        return crop
-
-    def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
-        dz = abs(self.focal_plane - self.tissue_z)
-        half_dof = self._dof / 2.0
-        if dz <= half_dof:
-            return img
-        sigma = min((dz - half_dof) * self._blur_scale_table.get(
-            self.current_objectiv, 0.5), 30.0)
-        if sigma < 0.3:
-            return img
-        return cv2.GaussianBlur(img, (0, 0), sigma)
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("Label", obj.get("label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        self.focal_plane = z
-
-    def get_z_drift(self) -> float:
-        """Return cumulative Z-drift (µm)."""
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        """Reset Z-drift to zero."""
-        self.tissue_z = 0.0
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        """Enable photobleaching on fluorescence channels (1=nucleus, 2=membrane).
-
-        Args:
-            rate: Fractional signal loss per exposure-ms (0.001 = slow, 0.01 = fast).
-        """
-        for ch in [1, 2]:
-            if ch in self._pipeline:
-                self._pipeline[ch].photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        """Reset accumulated photobleaching on all channels."""
-        for pipe in self._pipeline.values():
-            pipe.reset_bleach()
-
-    def update_state(self, dict_state: dict):
-        self.state_devices = dict_state
-
-    def update(self, dt: float = 0.016):
-        self.step(dt)
-
-    def reset(self, seed: int = None):
-        if seed is not None:
-            self.rng = np.random.default_rng(seed)
 
     # ── Ground truth ──
 

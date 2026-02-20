@@ -28,11 +28,14 @@ Usage:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class NeuronSim:
+class NeuronSim(SimBase):
     """Cultured neuron simulation with branching morphology."""
+
+    continuous = True
 
     def __init__(self, n_neurons=8, world_size=512, seed=42,
                  viewport_width=512, viewport_height=512,
@@ -47,40 +50,22 @@ class NeuronSim:
             density: "sparse" (3-5), "medium" (6-10), "dense" (12-20)
             internal_scale: render at world_size * scale internally (default 4)
         """
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=1.0,
+            auto_step=False, snaps_per_step=1,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,
+                ("mScarlet3(569/582)", "ORANGE"): 2,
+            },
+        )
+
         self.n_neurons = n_neurons
-        self.width = world_size
-        self.height = world_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
         self._seed = seed
 
-        # SimulationBridge interface
-        self.mode = 0
-        self.camera_offset = [0, 0]
-        self.state_devices = {}
-        self.current_objectiv = 10
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self._dof_table = {10: 6.0, 20: 3.0, 40: 1.5, 100: 0.6}
-        self._dof = 6.0
-        self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0, 100: 2.0}
-        self._snap_count = 0
-
-        # Z-drift (thermal/mechanical drift during timelapse)
-        self.z_drift_rate = 0.0   # µm/s
-        self.z_drift_noise = 0.0  # σ of z-jitter (µm·s⁻½, Brownian)
-
-        # Extra channels
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,
-            ("mScarlet3(569/582)", "ORANGE"): 2,
-        }
+        # Override DOF table entry for 20x
+        self._dof_table[20] = 3.0
 
         # Optical pipelines per channel
         self._pipeline = {
@@ -121,10 +106,7 @@ class NeuronSim:
 
         # SLM optogenetics (ChR2: light → neuron depolarization → calcium)
         self._slm_mask = None  # world-coordinate bool mask
-        self.auto_step = False
-        self.snaps_per_step = 1
         self._snap_counter_auto = 0
-        self.fixed_dt = 1.0
 
         # Drug response
         self._drug_active = False
@@ -153,14 +135,6 @@ class NeuronSim:
                 "description": "depolarization — strong synchronized firing",
             },
         }
-
-    def _s(self, v):
-        """Scale world coordinate to internal resolution (int)."""
-        return int(round(v * self.internal_scale))
-
-    def _sf(self, v):
-        """Scale world coordinate to internal resolution (float)."""
-        return v * self.internal_scale
 
     def _pear_contour(self, cx, cy, r, apical_angle, n_pts=48):
         """Generate a pear-shaped contour for pyramidal neuron soma.
@@ -476,7 +450,6 @@ class NeuronSim:
         """Capture a frame — compatible with SimulationBridge."""
         self._update_mode()
         self._update_objectif()
-        self._snap_count += 1
 
         # Map SLM mask to world coordinates (ChR2 optogenetics)
         if mask is not None and np.any(mask):
@@ -495,6 +468,8 @@ class NeuronSim:
         # Applied during snap (laser on during exposure), not during step().
         if self._slm_mask is not None and self._calcium_enabled:
             self._apply_slm_stimulation()
+
+        self._snap_count += 1
 
         if self.mode == 0:
             full = self._bf_full
@@ -522,13 +497,7 @@ class NeuronSim:
 
         crop = self._crop_fov(full)
         crop = self._apply_defocus(crop)
-
-        if self.mode in self._pipeline:
-            pipe = self._pipeline[self.mode]
-            if pipe.photobleach_rate > 0 and self.mode > 0:
-                crop = pipe.apply_with_bleach(crop, exposure_ms=exposure)
-            else:
-                crop = pipe.apply(crop, exposure_ms=exposure)
+        crop = self._apply_pipeline(crop, exposure)
 
         return crop
 
@@ -878,115 +847,6 @@ class NeuronSim:
                     cv2.circle(img, (ix, iy), vr, 200.0, -1, cv2.LINE_AA)
 
         return np.clip(img, 0, 255).astype(np.uint8)
-
-    def _crop_fov(self, full):
-        """Crop FOV from internal-res buffer, resize to viewport."""
-        s = self.internal_scale
-        ih, iw = full.shape[:2]
-        out_w, out_h = self.viewport_width, self.viewport_height
-        obj = self.current_objectiv
-
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov_world = fov_map.get(obj, min(512, self.width))
-
-        fov_int = fov_world * s
-
-        cx_world = int(self.camera_offset[0]) + out_w // 2
-        cy_world = int(self.camera_offset[1]) + out_h // 2
-        cx_int = int(cx_world * s)
-        cy_int = int(cy_world * s)
-
-        half = fov_int // 2
-        x0 = max(0, min(cx_int - half, iw - fov_int))
-        y0 = max(0, min(cy_int - half, ih - fov_int))
-
-        crop = full[y0:y0 + fov_int, x0:x0 + fov_int].copy()
-
-        if crop.shape[0] < fov_int or crop.shape[1] < fov_int:
-            bg = 175 if self.mode == 0 else 0
-            padded = np.full((fov_int, fov_int), bg, dtype=crop.dtype)
-            padded[:crop.shape[0], :crop.shape[1]] = crop
-            crop = padded
-
-        if crop.shape[0] > out_h:
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=cv2.INTER_AREA)
-        elif crop.shape[0] < out_h:
-            interp = cv2.INTER_LINEAR if self.mode == 0 else cv2.INTER_CUBIC
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=interp)
-        return crop
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        """Update objective from device state."""
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("label", obj.get("Label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        """Set the Z focal plane."""
-        self.focal_plane = z
-
-    def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
-        """Apply defocus blur based on distance from focal plane."""
-        dz = abs(self.focal_plane - self.tissue_z)
-        half_dof = self._dof / 2.0
-        if dz <= half_dof:
-            return img
-        sigma = min((dz - half_dof) * self._blur_scale_table.get(
-            self.current_objectiv, 0.5), 30.0)
-        if sigma < 0.3:
-            return img
-        return cv2.GaussianBlur(img, (0, 0), sigma)
-
-    def get_z_drift(self) -> float:
-        """Return cumulative Z-drift in µm."""
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        """Reset Z-drift to initial position."""
-        self.tissue_z = 0.0
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        """Enable photobleaching on fluorescence channels.
-
-        Args:
-            rate: Fractional signal loss per exposure-ms (0.001 = slow, 0.01 = fast).
-        """
-        for ch in [1, 2]:
-            if ch in self._pipeline:
-                self._pipeline[ch].photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        """Reset accumulated photobleaching on all channels."""
-        for pipe in self._pipeline.values():
-            pipe.reset_bleach()
-
-    def update_state(self, dict_state: dict):
-        """Update device state (SimulationBridge callback)."""
-        self.state_devices = dict_state
 
     def enable_calcium_activity(self, frequency=0.08, decay_rate=0.25,
                                 peak_intensity=220, spread_radius=25,

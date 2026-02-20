@@ -33,10 +33,11 @@ Usage via SimulationBridge:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class MalariaSmearSim:
+class MalariaSmearSim(SimBase):
     """Giemsa-stained thin blood smear with P. falciparum parasites.
 
     Primary workflow: scan at 100x oil immersion, identify infected RBCs,
@@ -122,38 +123,22 @@ class MalariaSmearSim:
             applique_rate: fraction of rings placed at RBC periphery (P. falciparum)
             internal_scale: render at world_size * scale internally (default 4)
         """
-        self.width = world_size
-        self.height = world_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale,
+            auto_step=False, snaps_per_step=2,
+            mode_map={
+                ("mScarlet3(569/582)", "ORANGE"): 1,   # chromatin-aid
+                ("miRFP670(642/670)", "RED"): 2,       # RBC-overlay
+            },
+        )
 
-        # Camera / state
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.state_devices = {}
-        self.mode = 0
-        self.current_objectiv = 10
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
+        # Override DOF table (malaria uses 0.5 for 100x instead of default 0.6)
         self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5, 100: 0.5}
-        self._dof = 6.0
-        self._extra_channels = {}
-        self._mode_map = {
-            ("mScarlet3(569/582)", "ORANGE"): 1,   # chromatin-aid
-            ("miRFP670(642/670)", "RED"): 2,       # RBC-overlay
-        }
-        self._snap_count = 0
 
-        self.rng = np.random.default_rng(seed)
         self._noise_rng = np.random.default_rng(seed + 7777)
         self._render_rng = np.random.default_rng(seed + 5555)
-        self.fixed_dt = 0.0
-        self._time = 0.0
-        self.auto_step = False
-        self.snaps_per_step = 2
 
         # Dynamic lifecycle
         self._hours_per_step = 2.0  # simulated hours per step()
@@ -202,10 +187,10 @@ class MalariaSmearSim:
         self._wbc_cyto_neut = (210, 195, 205)    # pale pink
         self._wbc_cyto_lymph = (175, 185, 210)   # pale blue
 
-        # Optical pipeline
-        self._pipeline = OpticalPipeline()
-        self._pipeline.noise = {"photon_scale": 500, "read_noise": 1.5}
-        self._pipeline.vignette = 0.05
+        # Optical pipeline (single instance, not per-channel dict)
+        self._malaria_pipeline = OpticalPipeline()
+        self._malaria_pipeline.noise = {"photon_scale": 500, "read_noise": 1.5}
+        self._malaria_pipeline.vignette = 0.05
 
         # Generate and render
         self._generate_cells()
@@ -213,14 +198,6 @@ class MalariaSmearSim:
         self._nuc_full = None
         self._mem_full = None
         self._render_full()
-
-    def _s(self, v):
-        """Scale world coordinate to internal resolution (int)."""
-        return int(round(v * self.internal_scale))
-
-    def _sf(self, v):
-        """Scale world coordinate to internal resolution (float)."""
-        return v * self.internal_scale
 
     def _generate_cells(self):
         """Generate RBCs, WBCs, and assign parasite infections."""
@@ -733,12 +710,9 @@ class MalariaSmearSim:
         """Capture a frame — compatible with SimulationBridge."""
         self._update_mode()
         self._update_objectif()
-        self._snap_count += 1
 
-        # Auto-step dynamics
-        if self.auto_step:
-            if self._snap_count % self.snaps_per_step == 0:
-                self.step()
+        self._auto_step_tick()
+        self._snap_count += 1
 
         # Re-render if dirty
         if self._dirty:
@@ -757,92 +731,8 @@ class MalariaSmearSim:
                 full = self._bf_full
 
         crop = self._crop_fov(full)
-        crop = self._pipeline.apply(crop)
+        crop = self._malaria_pipeline.apply(crop)
         return crop
-
-    def _crop_fov(self, full):
-        """Crop FOV from internal-res buffer, resize to viewport."""
-        s = self.internal_scale
-        ih, iw = full.shape[:2]
-        out_w, out_h = self.viewport_width, self.viewport_height
-        obj = self.current_objectiv
-
-        # FOV in world units
-        if obj == 100:
-            fov_world = 64
-        elif obj == 40:
-            fov_world = 128
-        elif obj == 20:
-            fov_world = 256
-        else:
-            fov_world = min(512, self.width)
-
-        fov_int = fov_world * s
-
-        # Stage center in world coords → internal coords
-        cx_world = int(self.camera_offset[0]) + out_w // 2
-        cy_world = int(self.camera_offset[1]) + out_h // 2
-        cx_int = int(cx_world * s)
-        cy_int = int(cy_world * s)
-
-        half = fov_int // 2
-        x0 = max(0, min(cx_int - half, iw - fov_int))
-        y0 = max(0, min(cy_int - half, ih - fov_int))
-
-        crop = full[y0:y0 + fov_int, x0:x0 + fov_int].copy()
-
-        if crop.shape[0] < fov_int or crop.shape[1] < fov_int:
-            if self.mode == 0 and crop.ndim == 3:
-                padded = np.zeros((fov_int, fov_int, 3), dtype=crop.dtype)
-                padded[:] = self._bg_color.astype(crop.dtype)
-            else:
-                bg = 0
-                padded = np.full((fov_int, fov_int), bg, dtype=crop.dtype)
-            padded[:crop.shape[0], :crop.shape[1]] = crop
-            crop = padded
-
-        # Resize to viewport
-        if crop.shape[0] > out_h:
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=cv2.INTER_AREA)
-        elif crop.shape[0] < out_h:
-            interp = cv2.INTER_LINEAR if self.mode == 0 else cv2.INTER_CUBIC
-            crop = cv2.resize(crop, (out_w, out_h), interpolation=interp)
-        return crop
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("label", obj.get("Label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        self.focal_plane = z
-
-    def update_state(self, dict_state: dict):
-        self.state_devices = dict_state
 
     def _age_to_stage(self, age):
         """Convert parasite age (hours) to lifecycle stage name."""
@@ -1057,9 +947,6 @@ class MalariaSmearSim:
         if self._drug_active:
             self._drug_active = False
             self._drug_washing_out = True
-
-    def update(self, dt: float = 0.016):
-        pass
 
     def reset(self, seed: int = None):
         if seed is not None:

@@ -2,48 +2,49 @@
 import numpy as np
 import time
 from typing import Optional, List, Union, Literal, Sequence
+from virtual_microscope.base import SimBase
 from virtual_microscope.core.cell_optogenetic import OptogeneticCell
 from virtual_microscope.core.cell_drug import DrugResponseCell
-from virtual_microscope.core.renderer import Renderer
+from virtual_microscope.core.cell_cycle_renderer import CellCycleRenderer
 from virtual_microscope.core.spatial_grid import SpatialGrid
 from virtual_microscope.core.cell_base import CellBase, update_all_cells_parallel, check_collision
 from virtual_microscope.core.cell_normal import NormalCell
 from virtual_microscope.core.cell_cycle import CellCycleNormal
-from virtual_microscope.core.state_manager import CellCycleManager
+from virtual_microscope.core.cell_cycle_manager import CellCycleManager
 import cv2
 
 
-class MicroscopeSimOptmized:
+class ScatteredCellSim(SimBase):
     """Optmized microscope simulation with modular cell types."""
 
-    def __init__(self, width: int = 1500, height: int = 1500, 
-                 nb_cells: int = 240, cell_type: str = "optogenetic", 
-                 viewport_width: int = 512, viewport_height: int = 512, 
+    def __init__(self, width: int = 1500, height: int = 1500,
+                 nb_cells: int = 240, cell_type: str = "optogenetic",
+                 viewport_width: int = 512, viewport_height: int = 512,
                  base_radius: float = 20.0, rng_seed: int = 0,
                  cell_mix: Optional[dict] = None, concentration: float = 0.01, drug_type: Literal["growth", "mobility", "apoptosis"] = "growth"):
-        self.width = width
-        self.height = height
+        super().__init__(
+            width=width, height=height,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=rng_seed, internal_scale=1,
+            mode_map={
+                ("SCFP2(434/474)", "UV"): 1,           # DAPI
+                ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
+            },
+        )
+
         self.nb_cells = nb_cells
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
         self.base_radius = base_radius
         self.cell_type = cell_type
         self.cell_mix = cell_mix
         self.concentration = concentration
-        self.drug_type = drug_type 
+        self.drug_type = drug_type
         # Initialize components
-        self.renderer = Renderer(viewport_width, viewport_height)
+        self.renderer = CellCycleRenderer(viewport_width, viewport_height)
         self.spatial_grid = SpatialGrid(width, height, base_radius * 3)
 
-        # Camera settings
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-
-        # State tracking ?
-        self.state_devices = {}
-        self.mode = 0
         self._last_time = time.perf_counter()
-        self._objectif_dict = {"10x":10, "20x":20, "40x": 40}
+        # Legacy objectif_dict (no 100x for this sim)
+        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40}
 
         # Initialize cells based on type
         self._rng = np.random.RandomState(rng_seed)
@@ -56,16 +57,6 @@ class MicroscopeSimOptmized:
         self.cycle_manager: Optional[CellCycleManager] = None
         if self.cell_type == "cycle":
             self.cycle_manager = CellCycleManager(max_divisions=10, track_stats=True)
-
-        # Add objective property
-        self.current_objectiv: int = 10
-
-        # Data-driven channel->mode mapping (filter_label, led_label) -> mode_id
-        self._mode_map = {
-            ("SCFP2(434/474)", "UV"): 1,           # DAPI
-            ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
-        }
-        self._extra_channels = {}
 
 
     def _create_cells(self) -> List[Union[OptogeneticCell, DrugResponseCell, NormalCell, CellCycleNormal]]:
@@ -320,24 +311,6 @@ class MicroscopeSimOptmized:
         return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 
-    def _update_mode(self) -> None:
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filter_label = self.state_devices["Filter Wheel"]["label"]
-        led_label = self.state_devices["LED"]["label"]
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
     def _update_objectif(self) -> None:
         """Update the objctiv used based on the state device."""
         if "Objective" not in self.state_devices:
@@ -391,10 +364,6 @@ class MicroscopeSimOptmized:
         """Get cells visible in current viewport."""
         return self.renderer._get_visible_cells(self._cells, tuple(self.camera_offset))
     
-    def set_focal_plane(self, z: float) -> None:
-        """Set focal plane position."""
-        self.focal_plane = z
-
     def reset(self) -> None:
         """Reset simulation."""
         self._cells = self._create_cells()

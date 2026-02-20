@@ -23,10 +23,11 @@ Usage via SimulationBridge:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class CardioSim:
+class CardioSim(SimBase):
     """Beating cardiomyocyte monolayer with FHN-based wave propagation.
 
     A confluent monolayer of ~300 cardiomyocytes coupled by gap junctions.
@@ -38,6 +39,8 @@ class CardioSim:
       - mode 1: GCaMP (nucleus channel) — calcium transient (bright = systole)
       - mode 2: Membrane channel — cell boundaries (gap junctions)
     """
+
+    continuous = True
 
     # PDE grid size (coarse for speed)
     SIM_SIZE = 128
@@ -56,35 +59,18 @@ class CardioSim:
         coupling_strength: float = 2.0,
         internal_scale: int = 4,
     ):
-        self.width = grid_size
-        self.height = grid_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=grid_size, height=grid_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=fixed_dt,
+            auto_step=True, snaps_per_step=1,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,      # GCaMP
+                ("mScarlet3(569/582)", "ORANGE"): 2,   # cell-junctions
+            },
+        )
+
         self.nb_cells = n_cells
-        self.internal_scale = internal_scale
-        self._iw = grid_size * internal_scale
-        self._ih = grid_size * internal_scale
-
-        # Camera / state (SimulationBridge interface)
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.state_devices = {}
-        self.mode = 0
-        self.current_objectiv = 10
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40}
-        self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5}
-        self._dof = 6.0
-        self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0}
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,      # GCaMP
-            ("mScarlet3(569/582)", "ORANGE"): 2,   # cell-junctions
-        }
-        self._snap_count = 0
-
-        self.fixed_dt = fixed_dt
-        self.rng = np.random.default_rng(seed)
         self._noise_rng = np.random.default_rng(seed + 7777)
         self._seed = seed
         self.normal_freq = normal_freq
@@ -115,8 +101,6 @@ class CardioSim:
         # Backward-compat aliases (some code reads self.u / self.Du)
         self.Du = 1.0   # nominal diffusion (for GT/drug interface)
         self.pde_dt = 0.005  # nominal PDE dt (for GT calculations)
-
-        self._time = 0.0
 
         # Pacemaker sites (on automaton grid)
         # Primary pacemaker: cluster at bottom-left quadrant
@@ -170,19 +154,6 @@ class CardioSim:
         # SLM stimulation
         self._stim_mask = None  # bool array on SIM_SIZE grid
         self._stim_strength = 2.0
-
-        # Auto-step
-        self.auto_step = True
-        self.snaps_per_step = 1
-
-        # Z-drift
-        self.z_drift_rate = 0.0
-        self.z_drift_noise = 0.0
-
-        # Stage drift (interface compat)
-        self.stage_drift_rate = 0.0
-        self.stage_drift_noise = 0.0
-        self._drift_accumulator = np.array([0.0, 0.0])
 
         # Cell intensity cache
         self._cell_intensities = np.zeros(n_cells)
@@ -506,14 +477,6 @@ class CardioSim:
                 dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
             self.tissue_z += dz
 
-    def get_z_drift(self) -> float:
-        """Return cumulative Z-drift in µm."""
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        """Reset Z-drift to initial position."""
-        self.tissue_z = 0.0
-
     # ── Temperature response ──
 
     def _get_temperature(self) -> float:
@@ -558,44 +521,6 @@ class CardioSim:
         self._accumulate_z_drift(dt)
         self._update_drug_effect()
         self._evolve(n_steps)
-
-    # ── Internal scale helpers ──
-
-    def _s(self, v):
-        """Scale a world-pixel value to internal resolution (int)."""
-        return int(round(v * self.internal_scale))
-
-    def _crop_fov(self, full_img):
-        """Crop field-of-view from internal-res image and resize to viewport."""
-        s = self.internal_scale
-        fov_map = {10: 512, 20: 256, 40: 128}
-        fov_world = fov_map.get(self.current_objectiv, 512)
-        fov_int = fov_world * s
-
-        # Center FOV on stage position at any magnification
-        cx_world = int(self.camera_offset[0]) + self.viewport_width // 2
-        cy_world = int(self.camera_offset[1]) + self.viewport_height // 2
-        ox = cx_world * s - fov_int // 2
-        oy = cy_world * s - fov_int // 2
-
-        ih, iw = full_img.shape[:2]
-        ox = max(0, min(ox, iw - fov_int))
-        oy = max(0, min(oy, ih - fov_int))
-
-        crop = full_img[oy:oy + fov_int, ox:ox + fov_int]
-
-        if crop.shape[0] < fov_int or crop.shape[1] < fov_int:
-            bg = 140 if self.mode == 0 else 0
-            if len(full_img.shape) == 3:
-                padded = np.full((fov_int, fov_int, 3), bg, dtype=crop.dtype)
-            else:
-                padded = np.full((fov_int, fov_int), bg, dtype=crop.dtype)
-            padded[:crop.shape[0], :crop.shape[1]] = crop
-            crop = padded
-
-        out_w, out_h = self.viewport_width, self.viewport_height
-        interp = cv2.INTER_AREA if fov_int > out_w else cv2.INTER_LINEAR
-        return cv2.resize(crop, (out_w, out_h), interpolation=interp)
 
     # ── Rendering ──
 
@@ -699,7 +624,6 @@ class CardioSim:
 
         # Handle SLM mask — map to PDE grid
         if mask is not None and np.any(mask):
-            # Resize SLM mask from world coords to PDE grid
             pde_mask = cv2.resize(
                 mask.astype(np.uint8), (self.SIM_SIZE, self.SIM_SIZE),
                 interpolation=cv2.INTER_NEAREST,
@@ -708,11 +632,7 @@ class CardioSim:
         else:
             self._stim_mask = None
 
-        # Auto-step
-        if (self.auto_step and self._snap_count > 0
-                and self._snap_count % self.snaps_per_step == 0):
-            self.step()
-
+        self._auto_step_tick()
         self._snap_count += 1
 
         # Render
@@ -730,86 +650,13 @@ class CardioSim:
         # Crop FOV and resize to viewport
         viewport = self._crop_fov(full_img)
         viewport = self._apply_defocus(viewport)
-
-        if self.mode in self._pipeline:
-            pipe = self._pipeline[self.mode]
-            if self.mode > 0 and pipe.photobleach_rate > 0:
-                viewport = pipe.apply_with_bleach(viewport, exposure_ms=exposure)
-            else:
-                viewport = pipe.apply(viewport, exposure_ms=exposure)
-
-        # Exposure scaling (BF uses 2× base for transmitted light)
-        if self.mode == 0:
-            scale = min(intensity * 0.02 * exposure, 2.0)
-        else:
-            scale = intensity * 0.01 * exposure
-        viewport = (viewport.astype(np.float32) * scale).clip(0, 255).astype(np.uint8)
+        viewport = self._apply_pipeline(viewport, exposure)
+        viewport = self._apply_exposure(viewport, exposure, intensity)
 
         return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
 
-    def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
-        dz = abs(self.focal_plane - self.tissue_z)
-        half_dof = self._dof / 2.0
-        if dz <= half_dof:
-            return img
-        sigma = min((dz - half_dof) * self._blur_scale_table.get(
-            self.current_objectiv, 0.5), 30.0)
-        if sigma < 0.3:
-            return img
-        return cv2.GaussianBlur(img, (0, 0), sigma)
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("Label", obj.get("label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        self.focal_plane = z
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        """Enable photobleaching on fluorescence channels."""
-        for mode in [1, 2]:
-            if mode in self._pipeline:
-                self._pipeline[mode].photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        """Reset accumulated photobleaching."""
-        for pipe in self._pipeline.values():
-            pipe.reset_bleach()
-
-    def update_state(self, dict_state: dict):
-        self.state_devices = dict_state
-
-    def update(self, dt: float = 0.016):
-        self.step()
-
     def reset(self, seed: int = None):
-        if seed is not None:
-            self.rng = np.random.default_rng(seed)
+        super().reset(seed)
         self._ca_state[:] = 0
         self._gcamp[:] = 0.0
         self._pacemaker_accum = 0

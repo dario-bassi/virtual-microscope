@@ -17,11 +17,14 @@ Channels:
 import math
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class FibroblastSim:
+class FibroblastSim(SimBase):
     """Virtual fibroblast culture with subcellular detail."""
+
+    continuous = True
 
     def __init__(
         self,
@@ -33,15 +36,17 @@ class FibroblastSim:
         fixed_dt: float = 0.0,
         internal_scale: int = 4,
     ):
-        self.width = world_size
-        self.height = world_size
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=fixed_dt,
+            auto_step=False, snaps_per_step=1,
+            mode_map={
+                ("SCFP2(434/474)", "UV"): 1,           # DAPI
+                ("TagGFP2(483/506)", "GREEN"): 2,      # phalloidin
+            },
+        )
 
-        self.rng = np.random.default_rng(seed)
         self._noise_rng = np.random.default_rng(seed + 5555)
 
         # Optical pipelines per channel
@@ -55,29 +60,6 @@ class FibroblastSim:
             2: OpticalPipeline(
                 psf_sigma=1.2, noise={"photon_scale": 3.5, "read_std": 3.0},
                 vignette=0.12, rng_seed=seed + 302),
-        }
-
-        # SimulationBridge interface
-        self.state_devices = {}
-        self.mode = 0  # 0=BF, 1=nucleus, 2=actin
-        self.camera_offset = [0, 0]
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.current_objectiv = 0  # 0=10x, 1=20x, 2=40x
-        self._snap_count = 0
-        self.auto_step = False
-        self.snaps_per_step = 1
-        self.fixed_dt = fixed_dt
-
-        # Z-drift (thermal/mechanical drift during timelapse)
-        self.z_drift_rate = 0.0
-        self.z_drift_noise = 0.0
-
-        # Extra channels (e.g. vinculin for focal adhesions)
-        self._extra_channels = {}
-        self._mode_map = {
-            ("SCFP2(434/474)", "UV"): 1,           # DAPI
-            ("TagGFP2(483/506)", "GREEN"): 2,      # phalloidin
         }
 
         # Drug response state
@@ -123,7 +105,6 @@ class FibroblastSim:
                 "lamellipodium_loss": True,  # lamellipodia retract
             },
         }
-        self._time = 0.0
         self._step_count = 0
         self._actin_dirty = True
 
@@ -322,14 +303,6 @@ class FibroblastSim:
             if math.sqrt(dx * dx + dy * dy) < min_dist:
                 return True
         return False
-
-    def _s(self, v):
-        """Scale world coordinate to internal resolution (int)."""
-        return int(round(v * self.internal_scale))
-
-    def _sf(self, v):
-        """Scale world coordinate to internal resolution (float)."""
-        return v * self.internal_scale
 
     def _cell_to_world(self, cell, t, lat):
         """Convert cell-local coords (t=along axis, lat=perpendicular) to world."""
@@ -1037,130 +1010,12 @@ class FibroblastSim:
     # SimulationBridge interface
     # ----------------------------------------------------------------
 
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        """Update objective from device state."""
-        obj_state = self.state_devices.get("Objective", {})
-        label = obj_state.get("Label", obj_state.get("label", "10x"))
-        if "40" in str(label):
-            self.current_objectiv = 2
-        elif "20" in str(label):
-            self.current_objectiv = 1
-        else:
-            self.current_objectiv = 0
-
-    def _crop_fov(self, full_img: np.ndarray) -> np.ndarray:
-        """Crop FOV from internal-resolution image based on objective."""
-        s = self.internal_scale
-        # FOV in world pixels: 10x=512, 20x=256, 40x=128
-        fov_map = {0: 512, 1: 256, 2: 128}
-        fov_world = fov_map.get(self.current_objectiv, 512)
-        fov_int = fov_world * s
-
-        # Center FOV on stage position at any magnification
-        cx_world = int(self.camera_offset[0]) + self.viewport_width // 2
-        cy_world = int(self.camera_offset[1]) + self.viewport_height // 2
-        ox = cx_world * s - fov_int // 2
-        oy = cy_world * s - fov_int // 2
-
-        h, w = full_img.shape[:2]
-        bg_val = 140 if self.mode == 0 else 0
-
-        ndim = len(full_img.shape)
-        if ndim == 3:
-            crop = np.full((fov_int, fov_int, full_img.shape[2]), bg_val, dtype=np.uint8)
-        else:
-            crop = np.full((fov_int, fov_int), bg_val, dtype=np.uint8)
-
-        # Source region in internal image
-        x1 = max(0, ox)
-        y1 = max(0, oy)
-        x2 = min(w, ox + fov_int)
-        y2 = min(h, oy + fov_int)
-
-        dst_x1 = max(0, -ox)
-        dst_y1 = max(0, -oy)
-        src_w = x2 - x1
-        src_h = y2 - y1
-        if src_w > 0 and src_h > 0:
-            crop[dst_y1:dst_y1 + src_h, dst_x1:dst_x1 + src_w] = (
-                full_img[y1:y2, x1:x2]
-            )
-
-        # Resize to viewport
-        out_w, out_h = self.viewport_width, self.viewport_height
-        interp = cv2.INTER_AREA if fov_int > out_w else cv2.INTER_LINEAR
-        return cv2.resize(crop, (out_w, out_h), interpolation=interp)
-
-    def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
-        """Apply defocus blur based on focal plane distance from tissue."""
-        dz = abs(self.focal_plane - self.tissue_z)
-        if dz < 1.0:
-            return img
-        sigma = min(dz * 0.5, 30.0)
-        return cv2.GaussianBlur(img, (0, 0), sigma)
-
-    def update_state(self, state_dict: dict):
-        """Update device state from bridge."""
-        for dev, props in state_dict.items():
-            if dev not in self.state_devices:
-                self.state_devices[dev] = {}
-            self.state_devices[dev].update(props)
-
-    def set_focal_plane(self, z: float):
-        """Set focal plane position."""
-        self.focal_plane = z
-
-    def get_z_drift(self) -> float:
-        """Return cumulative Z-drift (µm)."""
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        """Reset Z-drift to zero."""
-        self.tissue_z = 0.0
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        """Enable photobleaching on fluorescence channels (1=nucleus, 2=actin)."""
-        for mode in [1, 2]:
-            if mode in self._pipeline:
-                self._pipeline[mode].photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        """Reset accumulated photobleaching."""
-        for mode in [1, 2]:
-            if mode in self._pipeline:
-                self._pipeline[mode].reset_bleach()
-
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
                    **kwargs) -> np.ndarray:
         """Capture a frame — compatible with SimulationBridge."""
         self._update_mode()
         self._update_objectif()
-
-        # Step at start of each snap cycle
-        if (self.auto_step and self._snap_count > 0
-                and self._snap_count % self.snaps_per_step == 0):
-            self.step()
-
+        self._auto_step_tick()
         self._snap_count += 1
 
         # Re-render if cell geometry changed (stretch, drug)
@@ -1184,26 +1039,10 @@ class FibroblastSim:
         else:
             full_img = self._bf_full
 
-        # Crop FOV from internal-resolution image
         viewport = self._crop_fov(full_img)
-
-        # Defocus
         viewport = self._apply_defocus(viewport)
-
-        # Optical pipeline (PSF, noise, vignetting, optional bleaching)
-        if self.mode in self._pipeline:
-            pipe = self._pipeline[self.mode]
-            if self.mode > 0 and pipe.photobleach_rate > 0:
-                viewport = pipe.apply_with_bleach(viewport, exposure_ms=exposure)
-            else:
-                viewport = pipe.apply(viewport, exposure_ms=exposure)
-
-        # Exposure scaling (BF uses 2× base to keep transmitted light at full contrast)
-        if self.mode == 0:
-            scale = min(intensity * 0.02 * exposure, 2.0)
-        else:
-            scale = intensity * 0.01 * exposure
-        viewport = (viewport.astype(np.float32) * scale).clip(0, 255).astype(np.uint8)
+        viewport = self._apply_pipeline(viewport, exposure)
+        viewport = self._apply_exposure(viewport, exposure, intensity)
 
         return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
 
@@ -1499,10 +1338,6 @@ class FibroblastSim:
 
     def reset(self, seed: int = None):
         """Reset simulation state."""
+        super().reset(seed)
         if seed is not None:
-            self.rng = np.random.default_rng(seed)
             self._noise_rng = np.random.default_rng(seed + 5555)
-        self._snap_count = 0
-        self.camera_offset = [0, 0]
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0

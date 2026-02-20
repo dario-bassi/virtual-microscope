@@ -5,6 +5,7 @@ Lives first in every backend's .cfg. On initialize() it:
   2. Reads SimConfig (optional path to .sim.json; defaults to backend package default)
   3. Calls mod.create_sim(**params) to build the simulation
   4. Wraps it in SimulationBridge and sets GLOBAL_BRIDGE
+  5. Auto-starts RealtimeEngine for continuous sims
 
 This allows `core.loadSystemConfiguration("bacteria/bacteria.cfg")` to work
 with zero custom Python code — the standard napari-micromanager workflow.
@@ -12,11 +13,14 @@ with zero custom Python code — the standard napari-micromanager workflow.
 
 import importlib
 import json
+import logging
 from pathlib import Path
 
 from pymmcore_plus.experimental.unicore import GenericDevice
 import virtual_microscope.simulation_bridge as bridge_module
-from virtual_microscope.simulation_bridge import SimulationBridge
+from virtual_microscope.simulation_bridge import SimulationBridge, set_global_bridge
+
+logger = logging.getLogger(__name__)
 
 
 class SimServer(GenericDevice):
@@ -66,8 +70,23 @@ class SimServer(GenericDevice):
 
         # Create simulation and install bridge
         sim = mod.create_sim(**params)
-        bridge_module.GLOBAL_BRIDGE = SimulationBridge(sim)
-        bridge_module.bridge_ready.set()  # signal state devices to proceed
+        bridge = SimulationBridge(sim)
+        set_global_bridge(bridge)
+
+        # Auto-start RealtimeEngine for continuous sims
+        if getattr(sim, 'continuous', False) and hasattr(sim, 'step'):
+            from virtual_microscope.realtime import RealtimeEngine
+            engine = RealtimeEngine(sim, time_scale=1.0,
+                                    tick_hz=10, idle_timeout=30.0,
+                                    bridge=bridge)
+            engine.patch_snap_frame()
+            engine.start()
+            bridge._engine = engine
+            logger.info("RealtimeEngine auto-started for %s", type(sim).__name__)
 
     def shutdown(self) -> None:
-        pass
+        # Stop engine on device shutdown
+        bridge = bridge_module.GLOBAL_BRIDGE
+        if bridge is not None and hasattr(bridge, '_engine') and bridge._engine is not None:
+            bridge._engine.stop()
+            bridge._engine = None

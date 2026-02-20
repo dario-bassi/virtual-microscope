@@ -24,17 +24,31 @@ Usage:
 
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class OrganoidSim:
+class OrganoidSim(SimBase):
     """3D hollow organoid simulation with Z-stack support."""
+
+    continuous = True
 
     def __init__(self, outer_radius=120, wall_thickness=20, n_cells=400,
                  n_buds=0, world_size=512, seed=42,
                  viewport_width=512, viewport_height=512,
                  internal_scale: int = 1,
                  lumen_opacity: float = 0.6):
+        super().__init__(
+            width=world_size, height=world_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=internal_scale, fixed_dt=1.0,
+            auto_step=False, snaps_per_step=1,
+            mode_map={
+                ("SCFP2(434/474)", "UV"): 1,
+                ("TagGFP2(483/506)", "GREEN"): 2,
+            },
+        )
+
         self.outer_radius = outer_radius
         self.inner_radius = outer_radius - wall_thickness
         self.wall_thickness = wall_thickness
@@ -45,37 +59,10 @@ class OrganoidSim:
         # (dead cell accumulation). Default 0.6 = typical mature organoid
         # with visible debris. Real organoid lumens are often dark/opaque.
         self.lumen_opacity = max(0.0, min(1.0, lumen_opacity))
-        self.width = world_size
-        self.height = world_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
         self._seed = seed
-        self.internal_scale = internal_scale
-        self._iw = world_size * internal_scale
-        self._ih = world_size * internal_scale
 
-        # SimulationBridge interface
-        self.mode = 0
-        self.camera_offset = [0, 0]
-        self.state_devices = {}
-        self.current_objectiv = 10
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40, "100x": 100}
-        self._dof_table = {10: 6.0, 20: 3.0, 40: 1.5, 100: 0.6}
-        self._dof = 6.0
-        self._snap_count = 0
-
-        # Z-drift
-        self.z_drift_rate = 0.0
-        self.z_drift_noise = 0.0
-
-        # Timing
-        self._time = 0.0
-        self.auto_step = False
-        self.snaps_per_step = 1
-        self.fixed_dt = 1.0
+        # Override DOF table entry for 20x
+        self._dof_table[20] = 3.0
 
         # Lumen swelling dynamics (forskolin/CFTR assay)
         self._swell_enabled = False
@@ -86,12 +73,6 @@ class OrganoidSim:
         self._drug_active = False
         self._initial_inner_radius = self.inner_radius
         self._initial_wall_thickness = wall_thickness
-
-        self._extra_channels = {}
-        self._mode_map = {
-            ("SCFP2(434/474)", "UV"): 1,
-            ("TagGFP2(483/506)", "GREEN"): 2,
-        }
 
         self._pipeline = {
             0: OpticalPipeline(
@@ -395,24 +376,13 @@ class OrganoidSim:
 
         self._matrigel_texture = tex
 
-    # ── Internal scale helpers ──
-
-    def _s(self, v):
-        return int(round(v * self.internal_scale))
-
-    def _sf(self, v):
-        return v * self.internal_scale
-
     # ── Rendering ──
 
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
         self._update_mode()
         self._update_objectif()
 
-        if (self.auto_step and self._snap_count > 0
-                and self._snap_count % self.snaps_per_step == 0):
-            self.step(self.fixed_dt)
-
+        self._auto_step_tick()
         self._snap_count += 1
 
         if self.mode == 0:
@@ -428,13 +398,7 @@ class OrganoidSim:
             full = self._render_brightfield()
 
         viewport = self._crop_fov(full)
-
-        if self.mode in self._pipeline:
-            pipe = self._pipeline[self.mode]
-            if self.mode > 0 and pipe.photobleach_rate > 0:
-                viewport = pipe.apply_with_bleach(viewport, exposure_ms=exposure)
-            else:
-                viewport = pipe.apply(viewport, exposure_ms=exposure)
+        viewport = self._apply_pipeline(viewport, exposure)
 
         return viewport
 
@@ -1185,97 +1149,6 @@ class OrganoidSim:
                 thickness = max(1, self._s(0.8))
                 cv2.line(img, (ix, iy), (ox, oy), val, thickness,
                          cv2.LINE_AA)
-
-    def _crop_fov(self, full_img):
-        """Crop FOV from internal-res buffer, resize to viewport.
-
-        Centers the crop on the stage position (camera_offset + viewport//2)
-        at any magnification.
-        """
-        s = self.internal_scale
-        fov_map = {10: 512, 20: 256, 40: 128, 100: 64}
-        fov_world = fov_map.get(self.current_objectiv, 512)
-        fov_int = fov_world * s
-
-        # Stage center in world coords → internal coords
-        cx_world = int(self.camera_offset[0]) + self.viewport_width // 2
-        cy_world = int(self.camera_offset[1]) + self.viewport_height // 2
-        cx_int = cx_world * s
-        cy_int = cy_world * s
-
-        half = fov_int // 2
-        ih, iw = full_img.shape[:2]
-        ox = max(0, min(cx_int - half, iw - fov_int))
-        oy = max(0, min(cy_int - half, ih - fov_int))
-
-        crop = full_img[oy:oy + fov_int, ox:ox + fov_int]
-
-        if crop.shape[0] < fov_int or crop.shape[1] < fov_int:
-            bg = 180 if self.mode == 0 else 0
-            padded = np.full((fov_int, fov_int), bg, dtype=crop.dtype)
-            padded[:crop.shape[0], :crop.shape[1]] = crop
-            crop = padded
-
-        out_w, out_h = self.viewport_width, self.viewport_height
-        interp = cv2.INTER_AREA if fov_int > out_w else cv2.INTER_LINEAR
-        return cv2.resize(crop, (out_w, out_h), interpolation=interp)
-
-    # ── Device state ──
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        if "Objective" not in self.state_devices:
-            return
-        obj = self.state_devices["Objective"]
-        lbl = obj.get("label", obj.get("Label", ""))
-        if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        self.focal_plane = z
-
-    def update_state(self, dict_state: dict):
-        self.state_devices = dict_state
-
-    # ── Z-drift ──
-
-    def get_z_drift(self) -> float:
-        return self.tissue_z
-
-    def reset_z_drift(self):
-        self.tissue_z = 0.0
-
-    # ── Photobleaching ──
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        for mode in [1, 2]:
-            if mode in self._pipeline:
-                self._pipeline[mode].photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        for mode in [1, 2]:
-            if mode in self._pipeline:
-                self._pipeline[mode].reset_bleach()
 
     # ── Extra channels ──
 

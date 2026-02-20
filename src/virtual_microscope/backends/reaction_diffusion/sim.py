@@ -13,10 +13,11 @@ Usage via SimulationBridge:
 import time
 import numpy as np
 import cv2
+from virtual_microscope.base import SimBase
 from virtual_microscope.optical_pipeline import OpticalPipeline
 
 
-class ReactionDiffusionSim:
+class ReactionDiffusionSim(SimBase):
     """Gray-Scott reaction-diffusion simulation compatible with SimulationBridge.
 
     The system evolves two chemicals (U and V) on a 2D grid:
@@ -37,6 +38,8 @@ class ReactionDiffusionSim:
     Optogenetics: SLM mask in snap_frame locally increases feed rate F,
     nucleating new wave fronts in stimulated regions.
     """
+
+    continuous = True
 
     # Preset parameter sets (standard Du=0.21, Dv=0.105)
     PRESETS = {
@@ -64,28 +67,21 @@ class ReactionDiffusionSim:
         fixed_dt: float = 0.0,
         noise_amplitude: float = 0.001,
     ):
-        self.width = grid_size
-        self.height = grid_size
-        self.viewport_width = viewport_width
-        self.viewport_height = viewport_height
+        super().__init__(
+            width=grid_size, height=grid_size,
+            viewport_width=viewport_width, viewport_height=viewport_height,
+            seed=seed, internal_scale=1, fixed_dt=fixed_dt,
+            auto_step=True, snaps_per_step=1,
+            mode_map={
+                ("TagGFP2(483/506)", "GREEN"): 1,
+                ("mScarlet3(569/582)", "ORANGE"): 2,
+            },
+        )
 
-        # Camera / state (SimulationBridge interface)
-        self.camera_offset = np.array([0.0, 0.0])
-        self.focal_plane = 0.0
-        self.tissue_z = 0.0
-        self.state_devices = {}
-        self.mode = 0
-        self.current_objectiv = 10
+        # Override: no 100x objective for this sim
         self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40}
         self._dof_table = {10: 6.0, 20: 4.0, 40: 1.5}
-        self._dof = 6.0
         self._blur_scale_table = {10: 0.3, 20: 0.5, 40: 1.0}
-        self._extra_channels = {}
-        self._mode_map = {
-            ("TagGFP2(483/506)", "GREEN"): 1,
-            ("mScarlet3(569/582)", "ORANGE"): 2,
-        }
-        self._snap_count = 0
 
         # Load preset parameters (can be overridden)
         params = self.PRESETS.get(preset, self.PRESETS["waves"]).copy()
@@ -95,10 +91,8 @@ class ReactionDiffusionSim:
         self.Dv = Dv if Dv is not None else params["Dv"]
         self.dt = dt
         self.steps_per_snap = steps_per_snap
-        self.fixed_dt = fixed_dt
         self.noise_amplitude = noise_amplitude
 
-        self.rng = np.random.default_rng(seed)
         self._noise_rng = np.random.default_rng(seed + 7777)
 
         # Optical pipelines per channel
@@ -113,11 +107,6 @@ class ReactionDiffusionSim:
                 psf_sigma=1.0, noise={"photon_scale": 3.0, "read_std": 3.0},
                 vignette=0.12, rng_seed=seed + 202),
         }
-
-        # Auto-step: advance simulation each N snap_frame calls
-        self.auto_step = True
-        self.snaps_per_step = 1  # how many snaps per evolution step
-        self._time = 0.0
 
         # Initialize grid
         self.U = np.ones((grid_size, grid_size), dtype=np.float64)
@@ -138,10 +127,7 @@ class ReactionDiffusionSim:
         self._inhibit_strength = 0.02  # local K increase when inhibited
         self._slm_mode = 0  # 0 = excite (increase F), 1 = inhibit (increase K)
 
-        # Stage drift (interface compat)
-        self.stage_drift_rate = 0.0
-        self.stage_drift_noise = 0.0
-        self._drift_accumulator = np.array([0.0, 0.0])
+        # Stage drift attributes inherited from SimBase
 
     def _seed_perturbation(self, seed: int):
         """Add initial seed regions to break symmetry."""
@@ -428,10 +414,7 @@ class ReactionDiffusionSim:
             self._stim_mask = None
 
         # Step simulation at the START of each snap cycle
-        if (self.auto_step and self._snap_count > 0
-                and self._snap_count % self.snaps_per_step == 0):
-            self.step()
-
+        self._auto_step_tick()
         self._snap_count += 1
 
         # Render
@@ -475,19 +458,10 @@ class ReactionDiffusionSim:
         viewport = self._apply_defocus(viewport)
 
         # Optical pipeline (PSF, noise, vignetting, bleaching)
-        if self.mode in self._pipeline:
-            pipe = self._pipeline[self.mode]
-            if self.mode > 0 and pipe.photobleach_rate > 0:
-                viewport = pipe.apply_with_bleach(viewport, exposure_ms=exposure)
-            else:
-                viewport = pipe.apply(viewport, exposure_ms=exposure)
+        viewport = self._apply_pipeline(viewport, exposure)
 
-        # Exposure scaling (BF uses 2× base for transmitted light)
-        if self.mode == 0:
-            scale = min(intensity * 0.02 * exposure, 2.0)
-        else:
-            scale = intensity * 0.01 * exposure
-        viewport = (viewport.astype(np.float32) * scale).clip(0, 255).astype(np.uint8)
+        # Exposure scaling
+        viewport = self._apply_exposure(viewport, exposure, intensity)
 
         return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
 
@@ -509,72 +483,6 @@ class ReactionDiffusionSim:
             cropped = img[y1:y1 + crop_size, x1:x1 + crop_size]
             return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
         return img
-
-    def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
-        """Apply defocus blur."""
-        dz = abs(self.focal_plane - self.tissue_z)
-        half_dof = self._dof / 2.0
-        if dz <= half_dof:
-            return img
-        defocus_um = dz - half_dof
-        blur_scale = self._blur_scale_table.get(self.current_objectiv, 0.5)
-        sigma = defocus_um * blur_scale
-        if sigma < 0.3:
-            return img
-        sigma = min(sigma, 30.0)
-        return cv2.GaussianBlur(img, (0, 0), sigma)
-
-    def _update_mode(self):
-        """Update rendering mode via _mode_map lookup."""
-        if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
-        filt = self.state_devices["Filter Wheel"]
-        led = self.state_devices["LED"]
-        filter_label = filt.get("label", filt.get("Label", ""))
-        led_label = led.get("label", led.get("Label", ""))
-
-        key = (filter_label, led_label)
-        if key in self._mode_map:
-            self.mode = self._mode_map[key]
-            return
-        for mode_id, ch_info in self._extra_channels.items():
-            if filter_label == ch_info["filter"] and led_label == ch_info["led"]:
-                self.mode = mode_id
-                return
-        self.mode = 0
-
-    def _update_objectif(self):
-        """Update objective from state devices."""
-        if "Objective" not in self.state_devices:
-            return
-        obj_label = self.state_devices["Objective"]["label"]
-        if obj_label in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[obj_label]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
-
-    def set_focal_plane(self, z: float):
-        """Set focal plane (µm)."""
-        self.focal_plane = z
-
-    def enable_photobleaching(self, rate: float = 0.001):
-        """Enable photobleaching on fluorescence channels."""
-        for mode in [1, 2]:
-            if mode in self._pipeline:
-                self._pipeline[mode].photobleach_rate = rate
-
-    def reset_photobleaching(self):
-        """Reset accumulated photobleaching."""
-        for pipe in self._pipeline.values():
-            pipe.reset_bleach()
-
-    def update_state(self, dict_state: dict):
-        """Called by SimulationBridge when device state changes."""
-        self.state_devices = dict_state
-
-    def update(self, dt: float = 0.016):
-        """Update simulation (compatibility)."""
-        self.step()
 
     def reset(self, seed: int = None):
         """Reset to initial conditions."""

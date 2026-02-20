@@ -1,14 +1,14 @@
-"""particle backend for virtual-microscope (MicroscopeSimOptmized scattered cells)."""
+"""particle backend for virtual-microscope (ScatteredCellSim)."""
 
 from pathlib import Path
 
-from virtual_microscope.core.microscope_sim_optimized import MicroscopeSimOptmized
+from virtual_microscope.core.scattered_cell_sim import ScatteredCellSim
 from virtual_microscope._init_standard import load_cfg
 
 
-def create_sim(nb_cells=50, world_width=1500, world_height=1500, base_radius=20.0, rng_seed=0, **kwargs) -> MicroscopeSimOptmized:
+def create_sim(nb_cells=50, world_width=1500, world_height=1500, base_radius=20.0, rng_seed=0, **kwargs) -> ScatteredCellSim:
     """Create a particle (scattered cells) simulation."""
-    return MicroscopeSimOptmized(
+    return ScatteredCellSim(
         width=world_width,
         height=world_height,
         nb_cells=nb_cells,

@@ -45,6 +45,8 @@ def _electrode_label_to_vector(label: str) -> list:
 class DynamicVoronoiSim(VoronoiSim):
     """VoronoiSim with temporal dynamics (wound healing, migration, division)."""
 
+    continuous = True
+
     def __init__(
         self,
         migration_speed: float = 2.0,

@@ -25,7 +25,7 @@ def setup_gel_doc(n_lanes=8, gel_type="western", seed=42):
         core.initializeDevice(dev)
     core.setCameraDevice("Camera")
     core.setState("Objective", 0)
-    core.defineConfigGroup("Fake")
-    core.defineConfig("Fake", "gel-image", "Objective", "Label", "10x")
-    core.setConfig("Fake", "gel-image")
+    core.defineConfigGroup("Channel")
+    core.defineConfig("Channel", "gel-image", "Objective", "Label", "10x")
+    core.setConfig("Channel", "gel-image")
     return core, sim

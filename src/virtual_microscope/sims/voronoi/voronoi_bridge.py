@@ -6,7 +6,7 @@ The VoronoiSim plugs directly into SimulationBridge — no monkey-patching.
 
 Usage:
     core, tissue = setup_voronoi_microscope(n_cells=80, seed=42)
-    core.setConfig("Fake", "brightfield")
+    core.setConfig("Channel", "brightfield")
     core.snapImage()
     bf_image = core.getImage()
 """

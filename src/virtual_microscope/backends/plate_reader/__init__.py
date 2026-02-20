@@ -33,8 +33,8 @@ def setup_plate_reader(assay_type="viability", seed=42):
     core.loadPyDevice("Channel", GenericStateDevice("Channel", labels))
     core.initializeDevice("Channel")
     core.setState("Channel", 0)
-    core.defineConfigGroup("Fake")
+    core.defineConfigGroup("Channel")
     for idx, lbl in labels.items():
-        core.defineConfig("Fake", lbl, "Channel", "Label", lbl)
-    core.setConfig("Fake", labels[0])
+        core.defineConfig("Channel", lbl, "Channel", "Label", lbl)
+    core.setConfig("Channel", labels[0])
     return core, sim

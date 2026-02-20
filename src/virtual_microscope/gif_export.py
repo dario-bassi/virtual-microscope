@@ -105,7 +105,7 @@ def save_timelapse_gif(
     frames = []
     for i in range(n_frames):
         if channel == "brightfield":
-            core.setConfig("Fake", "brightfield")
+            core.setConfig("Channel", "brightfield")
         else:
             filt, led = config
             if filt:
@@ -146,7 +146,7 @@ def frames_from_scenario(scenario_module, channel="nucleus-channel",
     frames = []
     for i in range(n_frames):
         if channel == "brightfield":
-            core.setConfig("Fake", "brightfield")
+            core.setConfig("Channel", "brightfield")
         else:
             filt, led = config
             if filt:

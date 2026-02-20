@@ -867,9 +867,9 @@ class VoronoiSim:
             filter_label="Electra1(402/454)", led_label="BLUE",
         )
         if core is not None:
-            core.defineConfig("Fake", "dic-channel",
+            core.defineConfig("Channel", "dic-channel",
                               "LED", "Label", "BLUE")
-            core.defineConfig("Fake", "dic-channel",
+            core.defineConfig("Channel", "dic-channel",
                               "Filter Wheel", "Label", "Electra1(402/454)")
         return mode_id
 
@@ -877,7 +877,7 @@ class VoronoiSim:
         """Render and register cytoplasm as an extra channel.
 
         Call after setting has_cytoplasm_marker and cytoplasm_intensity.
-        Optionally pass a core object to register the Fake config.
+        Optionally pass a core object to register the Channel config.
 
         Returns the mode_id assigned to this channel.
         """
@@ -887,9 +887,9 @@ class VoronoiSim:
             filter_label="TagGFP2(483/506)", led_label="GREEN",
         )
         if core is not None:
-            core.defineConfig("Fake", "cytoplasm-channel",
+            core.defineConfig("Channel", "cytoplasm-channel",
                               "LED", "Label", "GREEN")
-            core.defineConfig("Fake", "cytoplasm-channel",
+            core.defineConfig("Channel", "cytoplasm-channel",
                               "Filter Wheel", "Label", "TagGFP2(483/506)")
         return mode_id
 

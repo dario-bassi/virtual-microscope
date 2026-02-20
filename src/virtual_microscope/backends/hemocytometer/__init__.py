@@ -33,8 +33,8 @@ def setup_hemocytometer(n_cells=150, viability=0.85, cell_radius_range=(3, 7), d
         core.initializeDevice(dev)
     core.setCameraDevice("Camera")
     core.setState("Channel", 0)
-    core.defineConfigGroup("Fake")
-    core.defineConfig("Fake", "brightfield", "Channel", "Label", "brightfield")
-    core.defineConfig("Fake", "trypan-blue", "Channel", "Label", "trypan-blue")
-    core.setConfig("Fake", "brightfield")
+    core.defineConfigGroup("Channel")
+    core.defineConfig("Channel", "brightfield", "Channel", "Label", "brightfield")
+    core.defineConfig("Channel", "trypan-blue", "Channel", "Label", "trypan-blue")
+    core.setConfig("Channel", "brightfield")
     return core, sim

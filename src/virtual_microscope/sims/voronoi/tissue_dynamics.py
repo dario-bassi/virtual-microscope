@@ -528,7 +528,7 @@ class DynamicVoronoiSim(VoronoiSim):
         and registers it as 'gfp-channel' in the channel system.
 
         Args:
-            core: Optional CMMCore to register Fake config group entry.
+            core: Optional CMMCore to register Channel config group entry.
 
         Returns:
             mode_id for the GFP channel.
@@ -540,9 +540,9 @@ class DynamicVoronoiSim(VoronoiSim):
         )
         self._transloc_mode_id = mode_id
         if core is not None:
-            core.defineConfig("Fake", "gfp-channel",
+            core.defineConfig("Channel", "gfp-channel",
                               "LED", "Label", "GREEN")
-            core.defineConfig("Fake", "gfp-channel",
+            core.defineConfig("Channel", "gfp-channel",
                               "Filter Wheel", "Label", "TagGFP2(483/506)")
         return mode_id
 
@@ -690,9 +690,9 @@ class DynamicVoronoiSim(VoronoiSim):
                                        filter_label="TagGFP2(483/506)",
                                        led_label="GREEN")
             self._geminin_mode_id = mode_id
-            core.defineConfig("Fake", "geminin-channel",
+            core.defineConfig("Channel", "geminin-channel",
                               "LED", "Label", "GREEN")
-            core.defineConfig("Fake", "geminin-channel",
+            core.defineConfig("Channel", "geminin-channel",
                               "Filter Wheel", "Label", "TagGFP2(483/506)")
 
         # Dedicated geminin intensity array (step function, no smooth interp)
@@ -1030,9 +1030,9 @@ class DynamicVoronoiSim(VoronoiSim):
         self._lyso_mode_id = mode_id
 
         if core is not None:
-            core.defineConfig("Fake", "lysotracker-channel",
+            core.defineConfig("Channel", "lysotracker-channel",
                               "LED", "Label", "GREEN")
-            core.defineConfig("Fake", "lysotracker-channel",
+            core.defineConfig("Channel", "lysotracker-channel",
                               "Filter Wheel", "Label", "TagGFP2(483/506)")
         return mode_id
 
@@ -1223,9 +1223,9 @@ class DynamicVoronoiSim(VoronoiSim):
         self._ld_mode_id = mode_id
 
         if core is not None:
-            core.defineConfig("Fake", "bodipy-channel",
+            core.defineConfig("Channel", "bodipy-channel",
                               "LED", "Label", "GREEN")
-            core.defineConfig("Fake", "bodipy-channel",
+            core.defineConfig("Channel", "bodipy-channel",
                               "Filter Wheel", "Label", "TagGFP2(483/506)")
         return mode_id
 
@@ -1369,9 +1369,9 @@ class DynamicVoronoiSim(VoronoiSim):
         self._sg_mode_id = mode_id
 
         if core is not None:
-            core.defineConfig("Fake", "granule-channel",
+            core.defineConfig("Channel", "granule-channel",
                               "LED", "Label", "GREEN")
-            core.defineConfig("Fake", "granule-channel",
+            core.defineConfig("Channel", "granule-channel",
                               "Filter Wheel", "Label", "TagGFP2(483/506)")
         return mode_id
 
@@ -1605,14 +1605,14 @@ class DynamicVoronoiSim(VoronoiSim):
 
         if core is not None:
             # Register hardware configs using defineConfig(group, config, device, prop, value)
-            core.defineConfig("Fake", "calcein-channel",
+            core.defineConfig("Channel", "calcein-channel",
                               "LED", "Label", "GREEN")
-            core.defineConfig("Fake", "calcein-channel",
+            core.defineConfig("Channel", "calcein-channel",
                               "Filter Wheel", "Label", "obeYFP(514/528)")
             # PI channel (mRFP1-Q667 filter, ORANGE LED)
-            core.defineConfig("Fake", "pi-channel",
+            core.defineConfig("Channel", "pi-channel",
                               "LED", "Label", "ORANGE")
-            core.defineConfig("Fake", "pi-channel",
+            core.defineConfig("Channel", "pi-channel",
                               "Filter Wheel", "Label", "mRFP1-Q667(549/570)")
 
         return {
@@ -1860,9 +1860,9 @@ class DynamicVoronoiSim(VoronoiSim):
         self._fish_mode_id = mode_id
 
         if core is not None:
-            core.defineConfig("Fake", "fish-channel",
+            core.defineConfig("Channel", "fish-channel",
                               "LED", "Label", "ORANGE")
-            core.defineConfig("Fake", "fish-channel",
+            core.defineConfig("Channel", "fish-channel",
                               "Filter Wheel", "Label", "mRFP1-Q667(549/570)")
         return mode_id
 

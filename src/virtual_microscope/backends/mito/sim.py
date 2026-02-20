@@ -119,16 +119,32 @@ class MitoSim:
         self._dirty = True
 
     def _generate_network(self, n_tubules: int, fragmentation: float):
-        """Generate initial mitochondrial network as a set of tubule segments."""
-        self._tubules = []
-        margin = self._nuc_radius + 10  # avoid nucleus
+        """Generate mitochondrial network with branching junctions.
 
-        for _ in range(n_tubules):
+        First creates independent seed tubules, then adds branches that
+        sprout from midpoints of existing tubules (Y-junctions). This
+        produces a connected graph-like network rather than isolated lines.
+        """
+        self._tubules = []
+        margin = self._nuc_radius + 10
+
+        # Phase 1: seed tubules (60% of total)
+        n_seeds = max(10, int(n_tubules * 0.6))
+        for _ in range(n_seeds):
             for _attempt in range(50):
                 tubule = self._random_tubule(margin, fragmentation)
                 if tubule is not None:
                     self._tubules.append(tubule)
                     break
+
+        # Phase 2: branch tubules from existing (40% of total)
+        n_branches = n_tubules - n_seeds
+        for _ in range(n_branches):
+            if not self._tubules:
+                break
+            branch = self._branch_from_existing(fragmentation)
+            if branch is not None:
+                self._tubules.append(branch)
 
     def _random_tubule(self, margin: float, fragmentation: float):
         """Generate a single random tubule inside the cell, outside the nucleus."""
@@ -203,6 +219,72 @@ class MitoSim:
             "points": points,
             "width": width,
             "brightness": brightness,
+            "alive": True,
+        }
+
+    def _branch_from_existing(self, fragmentation: float):
+        """Create a branch that sprouts from a midpoint of an existing tubule.
+
+        Produces Y-junction topology: the branch starts at a point along
+        an existing tubule and extends in a roughly perpendicular direction.
+        """
+        # Pick a random alive tubule with enough points
+        alive = [t for t in self._tubules if t["alive"] and len(t["points"]) >= 4]
+        if not alive:
+            return None
+        parent = self.rng.choice(alive)
+        pts = parent["points"]
+
+        # Pick a junction point (not at the ends)
+        junc_idx = self.rng.integers(1, len(pts) - 1)
+        jx, jy = pts[junc_idx]
+
+        # Branch direction: roughly perpendicular to parent's local direction
+        dx = pts[min(junc_idx + 1, len(pts) - 1)][0] - pts[max(0, junc_idx - 1)][0]
+        dy = pts[min(junc_idx + 1, len(pts) - 1)][1] - pts[max(0, junc_idx - 1)][1]
+        parent_angle = math.atan2(dy, dx)
+        # Perpendicular ± some randomness
+        branch_angle = parent_angle + self.rng.choice([-1, 1]) * (math.pi / 2 + self.rng.normal(0, 0.4))
+
+        # Branch length (shorter than parent, 30-70% of typical)
+        if self.rng.random() < fragmentation:
+            length = self.rng.uniform(5, 15)
+        else:
+            length = self.rng.uniform(15, 50)
+
+        n_points = max(2, int(length / 5))
+        points = [(jx, jy)]
+        x, y = jx, jy
+        cx, cy = self._cell_cx, self._cell_cy
+        r_cell = self._cell_radius
+        r_nuc = self._nuc_radius
+        direction = branch_angle
+
+        for _ in range(1, n_points):
+            direction += self.rng.normal(0, 0.3)
+            step = length / n_points
+            x += step * math.cos(direction)
+            y += step * math.sin(direction)
+            # Clip to cytoplasm
+            dx_c, dy_c = x - cx, y - cy
+            dist_c = math.sqrt(dx_c * dx_c + dy_c * dy_c)
+            if dist_c > r_cell - 5:
+                x = cx + (r_cell - 8) * dx_c / dist_c
+                y = cy + (r_cell - 8) * dy_c / dist_c
+            elif dist_c < r_nuc + 8:
+                x = cx + (r_nuc + 12) * dx_c / max(dist_c, 1)
+                y = cy + (r_nuc + 12) * dy_c / max(dist_c, 1)
+            points.append((x, y))
+
+        # Inherit parent's brightness ± some variation
+        brightness = parent["brightness"] * self.rng.uniform(0.85, 1.15)
+        brightness = np.clip(brightness, 40, 250)
+        width = parent["width"] * self.rng.uniform(0.8, 1.1)
+
+        return {
+            "points": points,
+            "width": width,
+            "brightness": float(brightness),
             "alive": True,
         }
 

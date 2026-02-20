@@ -630,8 +630,10 @@ class MitoSim:
 
         Includes:
          - Perinuclear brightness gradient (mito density higher near nucleus)
-         - Cytoplasmic background fluorescence (unbound dye)
-         - Branch-point brightness enhancement
+         - Cytoplasmic background with granular texture (unbound dye + organelles)
+         - Along-tubule intensity variation (cristae density gradients)
+         - Punctate morphology for short fragments (post-fission swelling)
+         - Higher OOF haze for widefield simulation
         """
         s = self.internal_scale
         iw, ih = self._iw, self._ih
@@ -643,7 +645,7 @@ class MitoSim:
         ncx, ncy = self._s(self._nuc_cx), self._s(self._nuc_cy)
         nr = self._s(self._nuc_radius)
 
-        # Faint cytoplasmic background (unbound MitoTracker)
+        # Cytoplasmic background with granular texture
         yy, xx = np.mgrid[0:ih, 0:iw]
         dist_cell = np.sqrt((xx - ccx) ** 2 + (yy - ccy) ** 2).astype(
             np.float32
@@ -654,8 +656,16 @@ class MitoSim:
         cyto = (dist_cell < cr) & (dist_nuc > nr)
         # Perinuclear gradient: brighter background closer to nucleus
         peri_frac = np.clip(1.0 - (dist_nuc - nr) / (cr - nr), 0, 1)
-        bg_level = 5 + 10 * peri_frac * psi_scale
+        bg_level = 5 + 12 * peri_frac * psi_scale
         img[cyto] = bg_level[cyto]
+
+        # Granular cytoplasmic texture (ER, vesicles, out-of-plane organelles)
+        if not hasattr(self, '_cyto_texture'):
+            rng_tex = np.random.default_rng(self.rng.integers(0, 2**31))
+            raw = rng_tex.normal(0, 1.0, (ih // 4, iw // 4)).astype(np.float32)
+            self._cyto_texture = cv2.resize(
+                raw, (iw, ih), interpolation=cv2.INTER_LINEAR) * 6.0
+        img[cyto] += self._cyto_texture[cyto]
 
         # Draw tubules
         for t in self._tubules:
@@ -664,33 +674,63 @@ class MitoSim:
 
             pts = [(self._s(x), self._s(y)) for x, y in t["points"]]
             brightness = t["brightness"] * psi_scale
-            thickness = max(1, self._s(t["width"]))
+
+            # Thinner rendering — rely on PSF blur for apparent width
+            raw_w = t["width"]
+            # Swelling factor for low membrane potential (pre-fission)
+            swell = 1.0 + 0.5 * (1.0 - self._membrane_potential)
+            thickness = max(1, int(self._s(raw_w * 0.7 * swell)))
 
             # Perinuclear brightness boost for this tubule
             mid_idx = len(pts) // 2
             if mid_idx < len(pts):
                 mx, my = pts[mid_idx]
                 d_nuc = math.sqrt((mx - ncx) ** 2 + (my - ncy) ** 2)
-                peri_boost = 1.0 + 0.3 * max(0, 1.0 - d_nuc / cr)
+                peri_boost = 1.0 + 0.4 * max(0, 1.0 - d_nuc / cr)
             else:
                 peri_boost = 1.0
 
-            for i in range(len(pts) - 1):
-                seg_bright = int(
-                    brightness * peri_boost
-                    * self._noise_rng.uniform(0.8, 1.0)
-                )
-                seg_bright = min(255, seg_bright)
-                cv2.line(img, pts[i], pts[i + 1], float(seg_bright),
-                         thickness, lineType=cv2.LINE_AA)
+            # Short fragments → render as puncta (round spots)
+            total_len = sum(
+                math.sqrt((pts[i+1][0]-pts[i][0])**2 + (pts[i+1][1]-pts[i][1])**2)
+                for i in range(len(pts)-1)
+            ) if len(pts) > 1 else 0
 
-        # PSF-like blur
+            if len(pts) <= 2 and total_len < self._s(10):
+                # Punctum: bright round spot (swollen fragment)
+                px = int(np.mean([p[0] for p in pts]))
+                py = int(np.mean([p[1] for p in pts]))
+                punctum_r = max(2, int(thickness * 1.5 * swell))
+                punctum_bright = min(255, int(brightness * peri_boost * 1.2))
+                cv2.circle(img, (px, py), punctum_r,
+                           float(punctum_bright), -1, cv2.LINE_AA)
+            else:
+                # Along-tubule intensity variation (cristae density)
+                n_seg = len(pts) - 1
+                # Random walk brightness modulation (smooth, ~20% amplitude)
+                seg_mods = np.ones(n_seg)
+                if n_seg > 1:
+                    walk = np.cumsum(self._noise_rng.normal(0, 0.08, n_seg))
+                    walk -= walk.mean()
+                    seg_mods = np.clip(1.0 + walk, 0.6, 1.3)
+
+                for i in range(n_seg):
+                    seg_bright = int(
+                        brightness * peri_boost * seg_mods[i]
+                        * self._noise_rng.uniform(0.85, 1.0)
+                    )
+                    seg_bright = min(255, seg_bright)
+                    cv2.line(img, pts[i], pts[i + 1], float(seg_bright),
+                             thickness, lineType=cv2.LINE_AA)
+
+        # PSF-like blur (tighter sigma for sub-resolution tubules)
         blur_k = max(3, s * 3) | 1
-        img = cv2.GaussianBlur(img, (blur_k, blur_k), 0.8 * s)
+        img = cv2.GaussianBlur(img, (blur_k, blur_k), 0.9 * s)
 
         # Out-of-focus haze: diffuse glow from mito in other Z-planes
+        # Higher for widefield (~25%) to match real OOF contribution
         haze = cv2.GaussianBlur(img, (0, 0), 8.0 * s)
-        img = img + haze * 0.15  # add 15% of heavily blurred signal
+        img = img + haze * 0.25
 
         return np.clip(img, 0, 255).astype(np.uint8)
 

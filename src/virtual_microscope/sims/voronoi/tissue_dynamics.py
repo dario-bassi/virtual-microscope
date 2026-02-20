@@ -2171,8 +2171,10 @@ class DynamicVoronoiSim(VoronoiSim):
         if self._nuc_dynamics is not None or self._mem_dynamics is not None:
             self._apply_fluorescence_dynamics()
 
-        # Skip _apply_gene_induction() and _apply_photoconversion()
-        # — those are observation-coupled (SLM mask)
+        # SLM-driven effects are continuous illumination — apply in background
+        self._apply_gene_induction()
+        self._apply_photoconversion()
+        self._apply_laser_ablation()
 
         # Auto-couple Perfusion device to drug-dependent reporters
         self._sync_perfusion_drug_state()

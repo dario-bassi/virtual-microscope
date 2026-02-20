@@ -542,19 +542,18 @@ class CardioSim:
         self._evolve(n_steps)
 
     def step_autonomous(self, dt: float = 1.0):
-        """Advance PDE without SLM stimulation.
+        """Advance PDE WITH continuous SLM optogenetic pacing.
 
-        Used by RealtimeEngine for background dynamics. Drug effects
-        still apply. Pacemakers continue firing.
+        Used by RealtimeEngine for background dynamics. SLM stimulation
+        triggers resting cells under illumination — this is continuous
+        optogenetic pacing and must be applied during background stepping.
+        Drug effects and pacemakers also continue firing.
         """
-        saved_stim = self._stim_mask
-        self._stim_mask = None
         temp_factor = self._temp_rate_factor()
         n_steps = max(1, round(dt * self.steps_per_snap * temp_factor))
         self._accumulate_z_drift(dt)
         self._update_drug_effect()
         self._evolve(n_steps)
-        self._stim_mask = saved_stim
 
     # ── Internal scale helpers ──
 

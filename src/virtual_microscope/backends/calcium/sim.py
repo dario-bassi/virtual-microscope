@@ -492,17 +492,27 @@ class CalciumSim:
                 self._fire_pacemakers()
 
     def step_autonomous(self, dt: float = 1.0):
-        """Advance PDE without SLM stimulation effects.
+        """Advance PDE WITH continuous SLM optogenetic effects.
 
-        Used by RealtimeEngine for background dynamics. Pacemakers and
-        noise still fire, so tissue always has activity.
+        Used by RealtimeEngine for background dynamics. SLM stimulation
+        (excite/inhibit) is continuous illumination and must be applied
+        during background stepping, not just during snap_frame().
         """
+        # Read SLM-Mode from state_devices (updated by core.setState)
+        if "SLM-Mode" in self.state_devices:
+            mode_dev = self.state_devices["SLM-Mode"]
+            label = mode_dev.get("Label", mode_dev.get("label", "excite"))
+            self._slm_mode = 1 if label == "inhibit" else 0
+
         temp_factor = self._temp_rate_factor()
         n_steps = max(1, round(dt * self.steps_per_snap * temp_factor))
 
         self._advance_pacemakers(dt)
 
-        self._evolve(n_steps)
+        if self._stim_mask is not None and np.any(self._stim_mask):
+            self._evolve_with_stim(n_steps)
+        else:
+            self._evolve(n_steps)
         self._time += n_steps * self.pde_dt
 
     # ── Rendering (Voronoi cellular overlay on PDE) ──

@@ -301,8 +301,8 @@ class BloodSmearSim:
             mean_r = float(np.mean(self._rbc_radius[stack_idx]))
             spacing = mean_r * 2 * 0.60  # 40% overlap between adjacent
 
-            # Slight curvature (undulating stacks)
-            curvature = self.rng.uniform(-0.03, 0.03)
+            # Curvature: scales with stack length (longer → more arc)
+            curvature = self.rng.uniform(-0.08, 0.08) * (1 + 0.15 * n)
 
             for j, cell_idx in enumerate(stack_idx):
                 # Position along the stack
@@ -465,6 +465,9 @@ class BloodSmearSim:
                 stamp_cache[r_key] = self._make_rbc_stamp(r_key)
 
         # -- RBCs --
+        # Pre-compute transmittance reference for rouleaux stacking
+        bg_f = self._bg_color.astype(np.float32)
+
         for i in range(self.n_rbc):
             cx = self._s(self._rbc_x[i])
             cy = self._s(self._rbc_y[i])
@@ -499,10 +502,18 @@ class BloodSmearSim:
                     x1 = iw
                 region = stamp[sy0 : sy0 + (y1 - y0), sx0 : sx0 + (x1 - x0)]
                 if region.size > 0:
-                    # Composite: take darker value (RBC on lighter background)
                     target = img[y0:y1, x0:x1]
-                    # Per-channel minimum (RBC is darker than background)
-                    img[y0:y1, x0:x1] = np.minimum(target, region)
+                    if self._rbc_in_rouleaux[i]:
+                        # Rouleaux: transmittance multiplication for optical
+                        # density accumulation. Where stamp equals bg, T=1
+                        # (no change); where stamp is cell body, T<1 (darken).
+                        # Overlapping cells compound: bg * T1 * T2.
+                        transmittance = region / bg_f[None, None, :]
+                        np.clip(transmittance, 0.01, 1.0, out=transmittance)
+                        img[y0:y1, x0:x1] = target * transmittance
+                    else:
+                        # Normal: per-channel minimum (darker wins)
+                        img[y0:y1, x0:x1] = np.minimum(target, region)
 
         # -- WBCs --
         for i in range(self.n_wbc):

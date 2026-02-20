@@ -62,7 +62,7 @@ class MalariaSmearSim:
         "schizont": {
             "fraction": 0.05,        # rare in peripheral blood
             "size_ratio": 0.85,
-            "chromatin_dots": (8, 16),  # merozoites
+            "chromatin_dots": (8, 24),  # merozoites (real: 8-32, typically 8-24)
             "color_cyto": (140, 155, 200),
             "color_chromatin": (165, 35, 65),
         },
@@ -183,14 +183,14 @@ class MalariaSmearSim:
         else:
             self._stage_dist = {k: v["fraction"] for k, v in self.PARASITE_STAGES.items()}
 
-        # RGB Giemsa stain colors
+        # RGB Giemsa stain colors — warmer salmon-pink (eosin on hemoglobin)
         self.rgb_mode = True
-        self._bg_color = np.array([236, 230, 230], dtype=np.float32)
-        self._rbc_body = np.array([218, 165, 165], dtype=np.float32)  # pink-rose
-        self._rbc_pallor = np.array([235, 218, 218], dtype=np.float32)
-        self._rbc_edge = np.array([200, 148, 148], dtype=np.float32)
-        self._infected_rbc = np.array([195, 155, 150], dtype=np.float32)  # duller pink
-        self._infected_pallor = np.array([210, 190, 185], dtype=np.float32)
+        self._bg_color = np.array([240, 236, 233], dtype=np.float32)  # near-white, faint warm
+        self._rbc_body = np.array([225, 170, 155], dtype=np.float32)  # salmon-pink
+        self._rbc_pallor = np.array([240, 225, 218], dtype=np.float32)  # almost white center
+        self._rbc_edge = np.array([205, 148, 135], dtype=np.float32)  # darker salmon rim
+        self._infected_rbc = np.array([200, 158, 148], dtype=np.float32)  # duller, slightly grey
+        self._infected_pallor = np.array([215, 195, 185], dtype=np.float32)
         self._hemozoin_color = (60, 45, 30)      # dark brown-black
         self._ghost_fill = np.array([235, 228, 225], dtype=np.float32)
         self._ghost_outline = (215, 208, 205)
@@ -533,20 +533,25 @@ class MalariaSmearSim:
 
         if stage == "ring":
             ring_r = max(2 * s, size)
-            # Delicate ring — thinner line for smaller rings (P. falciparum diagnostic)
-            ring_thick = max(1, min(lt, ring_r // 3))
-            cv2.circle(img, (px, py), ring_r, color_cyto, ring_thick, cv2.LINE_AA)
+            # P. falciparum rings are extremely delicate — barely visible arc
+            # with prominent chromatin dots (the dots are the main visual feature)
+            ring_thick = max(1, min(lt - 1, ring_r // 4))  # thinner than before
+            # Draw only a partial arc (signet ring — not a full circle)
+            arc_start = np.degrees(angle + 0.4)
+            arc_end = np.degrees(angle + 2 * np.pi - 0.4)
+            cv2.ellipse(img, (px, py), (ring_r, ring_r), 0,
+                        arc_start, arc_end, color_cyto, ring_thick, cv2.LINE_AA)
             # Clear interior for ring transparency
             inner_r = max(1, ring_r - ring_thick - 1)
             if inner_r > 1:
                 cv2.circle(img, (px, py), inner_r, ring_interior, -1)
-            # Chromatin dots — vivid red, on ring perimeter
+            # Chromatin dots — vivid red-magenta, on ring perimeter
+            # These are the MOST prominent feature of the ring
             for d in range(parasite["n_dots"]):
                 dot_angle = angle + d * np.pi * 0.7
                 dx = int(ring_r * np.cos(dot_angle))
                 dy = int(ring_r * np.sin(dot_angle))
-                # Chromatin dots are proportionally larger than ring (prominent feature)
-                dot_r = max(lt, int(ring_r * 0.45))
+                dot_r = max(lt, int(ring_r * 0.50))  # large relative to ring
                 cv2.circle(img, (px + dx, py + dy), dot_r, color_chrom, -1)
 
         elif stage == "trophozoite":
@@ -567,15 +572,18 @@ class MalariaSmearSim:
             sch_r = max(3 * s, size)
             cv2.circle(img, (px, py), sch_r, color_cyto, -1, cv2.LINE_AA)
             n_mero = parasite["n_dots"]
-            mero_ring = max(2 * s, int(sch_r * 0.55))
             mero_r = max(lt, int(sch_r * 0.18))
+            # Irregularly packed merozoite cluster (not evenly-spaced rosette)
+            rng = self._render_rng
             for m in range(n_mero):
-                ma = 2 * np.pi * m / n_mero
-                mx = int(px + mero_ring * np.cos(ma))
-                my = int(py + mero_ring * np.sin(ma))
+                # Pack merozoites in a roughly circular cluster with jitter
+                ma = 2 * np.pi * m / n_mero + float(rng.uniform(-0.3, 0.3))
+                mr = float(rng.uniform(0.25, 0.65)) * sch_r  # variable radius
+                mx = int(px + mr * np.cos(ma))
+                my = int(py + mr * np.sin(ma))
                 cv2.circle(img, (mx, my), mero_r, color_chrom, -1)
-            # Central hemozoin pigment mass
-            cv2.circle(img, (px, py), max(lt, int(sch_r * 0.25)),
+            # Central hemozoin pigment mass — dense clump
+            cv2.circle(img, (px, py), max(lt, int(sch_r * 0.22)),
                        self._hemozoin_color, -1)
 
         elif stage == "gametocyte":
@@ -593,13 +601,14 @@ class MalariaSmearSim:
                 fill_color = (140, 150, 200)  # lighter blue
                 chrom_color = (185, 55, 85)   # paler red-pink
 
-            n_pts = 20
-            t = np.linspace(-0.85 * np.pi, 0.85 * np.pi, n_pts)
+            # Smooth banana crescent with rounded ends (Stage V mature form)
+            n_pts = 40  # more points for smoother curve
+            t = np.linspace(-0.90 * np.pi, 0.90 * np.pi, n_pts)
 
             ox = gam_len * np.sin(t)
             oy = -gam_w * np.cos(t)
-            ix = (gam_len * 0.65) * np.sin(t[::-1])
-            iy = -(gam_w * 0.25) * np.cos(t[::-1])
+            ix = (gam_len * 0.60) * np.sin(t[::-1])
+            iy = -(gam_w * 0.20) * np.cos(t[::-1])
 
             crescent_x = np.concatenate([ox, ix])
             crescent_y = np.concatenate([oy, iy])

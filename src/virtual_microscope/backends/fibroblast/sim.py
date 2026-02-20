@@ -650,6 +650,12 @@ class FibroblastSim:
             if cell["has_lamellipodium"] and not lam_lost:
                 self._draw_lamellipodium_actin(img, cell)
 
+            # CytoD / LatA actin aggregates: bright puncta appear as fibers
+            # disassemble. Free G-actin oligomerizes into visible clumps.
+            # Only for strong depolymerizers (>0.8 dimming), not ROCK inhibitors.
+            if de > 0.3 and profile.get("fiber_dimming", 0) > 0.8:
+                self._draw_actin_aggregates(img, cell, de)
+
         # Add noise (generate at world res, upscale)
         noise = self._noise_rng.normal(0, 2, (self.height, self.width, 3)).astype(np.float32)
         if s > 1:
@@ -658,6 +664,43 @@ class FibroblastSim:
         img = np.clip(img.astype(float) + noise, 0, 255).astype(np.uint8)
 
         return img
+
+    def _draw_actin_aggregates(self, img, cell, drug_effect):
+        """Draw CytoD-induced actin aggregates as bright puncta.
+
+        When CytoD caps barbed ends, depolymerized G-actin accumulates
+        and oligomerizes into visible clumps throughout the cytoplasm.
+        Density and brightness increase with drug effect.
+        """
+        ca = math.cos(cell["angle"])
+        sa = math.sin(cell["angle"])
+        half_l = cell["length"] * 0.42
+        half_w = cell["width"] * 0.38
+
+        # Number of aggregates scales with cell area and drug effect
+        # At full effect: ~15-25 aggregates per cell
+        frac = (drug_effect - 0.3) / 0.7  # 0 at de=0.3, 1 at de=1.0
+        n_agg = int(cell["length"] * cell["width"] * 0.003 * frac)
+        n_agg = max(0, min(n_agg, 40))
+
+        for _ in range(n_agg):
+            # Random position in cell body (local coords)
+            t = self.rng.uniform(-half_l, half_l)
+            lat = self.rng.uniform(-half_w, half_w)
+            # Rotate to world coords
+            wx = cell["cx"] + t * ca - lat * sa
+            wy = cell["cy"] + t * sa + lat * ca
+            px = self._s(wx)
+            py = self._s(wy)
+
+            # Bright aggregate — brighter than dimmed fibers
+            base_b = 120 + int(100 * frac)  # 120-220
+            brightness = int(base_b * self.rng.uniform(0.7, 1.0))
+            radius = max(1, self._s(self.rng.uniform(0.8, 2.2)))
+
+            cv2.circle(img, (int(px), int(py)), radius,
+                       (brightness, brightness, brightness), -1,
+                       lineType=cv2.LINE_AA)
 
     def _get_nucleus_ellipse(self, cell):
         """Get nucleus center and axes in internal coordinates."""

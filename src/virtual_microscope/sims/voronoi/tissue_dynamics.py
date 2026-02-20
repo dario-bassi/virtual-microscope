@@ -2393,6 +2393,7 @@ class DynamicVoronoiSim(VoronoiSim):
         new_has_mem = []
         new_nuc_int = []
         new_mem_int = []
+        new_parent_idx = []
 
         for i in range(self.nb_cells):
             if not self.alive[i]:
@@ -2414,6 +2415,7 @@ class DynamicVoronoiSim(VoronoiSim):
                 new_has_mem.append(self.has_membrane_marker[i])
                 new_nuc_int.append(self.nucleus_intensity[i])
                 new_mem_int.append(self.membrane_intensity[i])
+                new_parent_idx.append(i)
 
         if new_centers:
             n_new = len(new_centers)
@@ -2444,6 +2446,12 @@ class DynamicVoronoiSim(VoronoiSim):
                     np.zeros(n_new)])
                 self._ablated = np.concatenate([self._ablated,
                     np.zeros(n_new, dtype=bool)])
+            # Photoconversion: daughters inherit parent's converted state
+            if getattr(self, '_photoconversion_enabled', False):
+                daughter_conv = np.array([self._converted[pi] for pi in new_parent_idx])
+                self._converted = np.concatenate([self._converted, daughter_conv])
+                self._conversion_exposure = np.concatenate([
+                    self._conversion_exposure, np.zeros(n_new, dtype=int)])
             # Ghost weight for wound healing
             self._ghost_weight = np.concatenate([self._ghost_weight,
                 np.ones(n_new)])
@@ -2531,6 +2539,10 @@ class DynamicVoronoiSim(VoronoiSim):
                     self.nucleus_intensity[gi] = self.nucleus_intensity[i]
                     self.membrane_intensity[gi] = self.membrane_intensity[i]
                     self.apoptosis_stage[gi] = 0
+                    # Photoconversion: daughter inherits parent state
+                    if getattr(self, '_photoconversion_enabled', False):
+                        self._converted[gi] = self._converted[i]
+                        self._conversion_exposure[gi] = 0
                 else:
                     # Append new cell (only if no ghosts to recycle)
                     self._divide_append_one(i, new_center)
@@ -2587,6 +2599,12 @@ class DynamicVoronoiSim(VoronoiSim):
         if getattr(self, '_ablation_enabled', False):
             self._laser_damage = np.concatenate([self._laser_damage, [0.0]])
             self._ablated = np.concatenate([self._ablated, [False]])
+        # Photoconversion: daughter inherits parent's converted state
+        if getattr(self, '_photoconversion_enabled', False):
+            self._converted = np.concatenate([
+                self._converted, [self._converted[parent_idx]]])
+            self._conversion_exposure = np.concatenate([
+                self._conversion_exposure, [0]])
         # Ghost weight
         self._ghost_weight = np.concatenate([self._ghost_weight, [1.0]])
         # FUCCI geminin intensity (daughter starts in G1 → 0.05)

@@ -195,6 +195,9 @@ class NeuronSim:
             neuron = self._build_neuron(sx, sy, ntype, rng)
             self.neurons.append(neuron)
 
+        # Generate dendritic spines (tiny protrusions along dendrites)
+        self._generate_spines(rng)
+
         # Generate synaptic puncta along dendrites
         self._generate_puncta(rng)
 
@@ -304,10 +307,12 @@ class NeuronSim:
             width *= 0.95
 
     def _grow_axon(self, neuron, x0, y0, angle, length, rng):
-        """Grow a thin axon (no heavy branching, but some varicosities)."""
+        """Grow a thin axon with en passant varicosities (bouton swellings)."""
         cx, cy = x0, y0
         remaining = length
         width = 1.2
+        varicosity_interval = rng.uniform(12, 25)  # world px between boutons
+        dist_since_varicosity = 0
 
         while remaining > 5:
             seg = min(rng.uniform(20, 40), remaining)
@@ -319,8 +324,53 @@ class NeuronSim:
 
             neuron["segments"].append(
                 (cx, cy, nx, ny, width, False))  # is_dendrite=False
+
+            # Track distance for varicosity placement
+            dist_since_varicosity += seg
+            if dist_since_varicosity >= varicosity_interval:
+                if "varicosities" not in neuron:
+                    neuron["varicosities"] = []
+                neuron["varicosities"].append((nx, ny))
+                dist_since_varicosity = 0
+                varicosity_interval = rng.uniform(12, 25)
+
             remaining -= seg
             cx, cy = nx, ny
+
+    def _generate_spines(self, rng):
+        """Generate dendritic spines along dendrite segments.
+
+        Real neurons have 1-10 spines per 10µm of dendrite. Spines are
+        tiny protrusions (0.5-2µm) perpendicular to the shaft, with
+        mushroom, thin, or stubby morphology. Visible at 40x/100x in
+        both phase contrast and MAP2 fluorescence.
+        """
+        self.spines = []  # list of (x, y, head_r, type) in world coords
+
+        for neuron in self.neurons:
+            for (x0, y0, x1, y1, w, is_dend) in neuron["segments"]:
+                if not is_dend:
+                    continue
+                seg_len = np.hypot(x1 - x0, y1 - y0)
+                if seg_len < 3:
+                    continue
+                # Spine density: ~0.5-1.0 per world px of dendrite
+                # (at our scale, world px ≈ µm at 10x)
+                n_spines = rng.poisson(max(1, seg_len * 0.6))
+                dx, dy = x1 - x0, y1 - y0
+                norm = np.hypot(dx, dy) + 1e-6
+                # Perpendicular direction
+                px, py = -dy / norm, dx / norm
+                for _ in range(n_spines):
+                    t = rng.uniform(0.05, 0.95)
+                    sx = x0 + t * dx + rng.choice([-1, 1]) * px * rng.uniform(1.0, 2.5)
+                    sy = y0 + t * dy + rng.choice([-1, 1]) * py * rng.uniform(1.0, 2.5)
+                    # Spine head radius (0.3-0.8 world px)
+                    head_r = rng.uniform(0.3, 0.8)
+                    # Morphology type
+                    stype = rng.choice(["mushroom", "thin", "stubby"],
+                                       p=[0.3, 0.5, 0.2])
+                    self.spines.append((sx, sy, head_r, stype))
 
     def _generate_puncta(self, rng):
         """Generate synaptic puncta along dendrites."""
@@ -503,6 +553,28 @@ class NeuronSim:
                 cv2.line(img, (ix0, iy0), (ix1, iy1),
                          dark, thickness, cv2.LINE_AA)
 
+        # ── Axon varicosities: small dark swellings (en passant boutons) ──
+        for neuron in self.neurons:
+            for (vx, vy) in neuron.get("varicosities", []):
+                ix, iy = self._s(vx), self._s(vy)
+                vr = max(2, int(1.5 * s))
+                if 0 <= ix < self._iw and 0 <= iy < self._ih:
+                    cv2.circle(img, (ix, iy), vr + max(1, s // 2),
+                               192.0, -1, cv2.LINE_AA)  # halo
+                    cv2.circle(img, (ix, iy), vr,
+                               135.0, -1, cv2.LINE_AA)  # dark bouton
+
+        # ── Dendritic spines: tiny dark dots with halo at high magnification ──
+        for (sx, sy, head_r, stype) in self.spines:
+            ix, iy = self._s(sx), self._s(sy)
+            ir = max(1, int(round(head_r * s)))
+            if 0 <= ix < self._iw and 0 <= iy < self._ih:
+                # Bright halo around spine head
+                cv2.circle(img, (ix, iy), ir + max(1, s // 2), 190.0,
+                           -1, cv2.LINE_AA)
+                # Dark spine head (phase-dense)
+                cv2.circle(img, (ix, iy), ir, 120.0, -1, cv2.LINE_AA)
+
         # ── Soma rendering with proper phase contrast ──
         for ni, neuron in enumerate(self.neurons):
             sx, sy = self._sf(neuron["soma_x"]), self._sf(neuron["soma_y"])
@@ -613,6 +685,14 @@ class NeuronSim:
                 bp_r = max(2, int(2.5 * s))
                 cv2.circle(img, (bp_x, bp_y), bp_r, 220.0, -1, cv2.LINE_AA)
 
+        # ── Dendritic spines: bright dots along dendrites ──
+        for (sx, sy, head_r, stype) in self.spines:
+            ix, iy = self._s(sx), self._s(sy)
+            ir = max(1, int(round(head_r * s)))
+            if 0 <= ix < self._iw and 0 <= iy < self._ih:
+                brightness = 160.0 if stype == "mushroom" else 110.0
+                cv2.circle(img, (ix, iy), ir, brightness, -1, cv2.LINE_AA)
+
         # Out-of-focus haze from neuropil in other Z-planes
         haze = cv2.GaussianBlur(img, (0, 0), 6.0 * s)
         img = np.clip(img + haze * 0.08, 0, 255)
@@ -638,6 +718,14 @@ class NeuronSim:
                     cv2.line(img, (self._s(x0), self._s(y0)),
                              (self._s(x1), self._s(y1)),
                              8.0, lt, cv2.LINE_AA)
+
+        # Axon varicosities: bright en passant boutons in synaptophysin
+        for neuron in self.neurons:
+            for (vx, vy) in neuron.get("varicosities", []):
+                ix, iy = self._s(vx), self._s(vy)
+                vr = max(2, int(1.5 * s))
+                if 0 <= ix < self._iw and 0 <= iy < self._ih:
+                    cv2.circle(img, (ix, iy), vr, 200.0, -1, cv2.LINE_AA)
 
         return np.clip(img, 0, 255).astype(np.uint8)
 
@@ -1095,12 +1183,18 @@ class NeuronSim:
                 "n_segments": len(neuron["segments"]),
             })
 
+        total_spines = len(self.spines)
+        total_varicosities = sum(len(n.get("varicosities", []))
+                                 for n in self.neurons)
+
         gt = {
             "n_neurons": self.n_neurons,
             "neurons": neuron_data,
             "total_neurite_length": round(total_length, 1),
             "total_branch_points": total_branches,
             "total_puncta": total_puncta,
+            "total_spines": total_spines,
+            "total_varicosities": total_varicosities,
             "type_counts": {
                 "pyramidal": sum(1 for n in self.neurons if n["type"] == "pyramidal"),
                 "stellate": sum(1 for n in self.neurons if n["type"] == "stellate"),

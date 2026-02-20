@@ -22,6 +22,7 @@ class SimCameraDevice(CameraDevice):
     _mask: Optional[np.ndarray] = None
     _led_channel: str = None
     _filter_wheel_channel: str = None
+    _last_sim_time: float = 0.0
 
     def __init__(self) -> None:
 
@@ -82,6 +83,11 @@ class SimCameraDevice(CameraDevice):
             surf = bridge.snap(brightness=self._brightness, exposure=self._exposure,
                                gain=self._gain)  # type: ignore
 
+            # Record simulation time for the SimTime property
+            sim = bridge._sim if bridge else None
+            if sim is not None:
+                self._last_sim_time = getattr(sim, '_time', 0.0)
+
             buf = get_buffer(surf.shape, self.dtype())
             buf[:] = surf
 
@@ -125,6 +131,24 @@ class SimCameraDevice(CameraDevice):
     @brightness.sequence_starter
     def _start_brightness_sequence(self) -> None:
         print("Starting brightness sequence")
+
+    @pymm_property(
+        limits=(0.0, 1e9),
+        name="SimTime",
+        property_type=PropertyType.Float,
+    )
+    def sim_time(self) -> float:
+        """Simulation time (seconds) at the moment of the last snap.
+
+        Returns the sim's internal clock (``_time`` attribute) captured
+        when ``start_sequence`` yields a frame.  For backends without an
+        explicit clock, returns 0.0.
+        """
+        return self._last_sim_time
+
+    @sim_time.setter
+    def sim_time(self, value: float) -> None:
+        pass  # read-only; ignore writes
 
     @pymm_property(
         limits=(1.0, 32.0),

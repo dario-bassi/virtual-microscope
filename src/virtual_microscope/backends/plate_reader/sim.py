@@ -249,7 +249,9 @@ class PlateReaderSim:
     # -- SimulationBridge interface --
 
     def _update_mode(self):
-        ch = self.state_devices.get("Channel", {})
+        if "Channel" not in self.state_devices:
+            return  # keep current mode when no devices are registered
+        ch = self.state_devices["Channel"]
         ch_label = ch.get("label", ch.get("Label", ""))
 
         # "ref" in label → reference wavelength (mode 1)

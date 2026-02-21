@@ -105,6 +105,24 @@ RED = (255, 0, 0)
 CYAN = (0, 255, 255)
 MAGENTA = (255, 0, 255)
 YELLOW = (255, 255, 0)
+ORANGE = (255, 165, 0)
+
+
+def apply_color(img: np.ndarray, color: tuple[int, int, int]) -> np.ndarray:
+    """Map grayscale to a single RGB color without background subtraction.
+
+    Like apply_fluorescence() but skips local background subtraction.
+    0→black, max→full color.  Use when apply_fluorescence() kills signal
+    (e.g. Voronoi-based sims where all modes share similar structure).
+    """
+    gray = to_gray(img)
+    gray = contrast_stretch(gray)
+    norm = gray.astype(np.float32) / 255.0
+    out = np.zeros((*gray.shape, 3), dtype=np.uint8)
+    out[..., 0] = (norm * color[0]).clip(0, 255).astype(np.uint8)
+    out[..., 1] = (norm * color[1]).clip(0, 255).astype(np.uint8)
+    out[..., 2] = (norm * color[2]).clip(0, 255).astype(np.uint8)
+    return out
 
 
 # ── Compositing ──────────────────────────────────────────────────────

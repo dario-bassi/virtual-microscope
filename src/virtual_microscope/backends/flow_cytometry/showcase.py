@@ -9,10 +9,13 @@ from virtual_microscope._showcase_utils import (
 
 
 def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
-    """Return 4 visually compelling 512x512 RGB images of the flow_cytometry backend."""
+    """Return 4 visually compelling 512x512 RGB images of the flow_cytometry backend.
+
+    Reduced events_per_snap for more realistic single-file cell appearance.
+    """
     from virtual_microscope.backends.flow_cytometry import create_sim
 
-    sim = create_sim(n_total=10000, events_per_snap=100, seed=seed)
+    sim = create_sim(n_total=10000, events_per_snap=25, seed=seed)
 
     scatter = snap_channel(sim, mode=0, exposure=50.0)
     img1 = gray_to_rgb(scatter, stretch=False)

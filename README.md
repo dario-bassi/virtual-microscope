@@ -6,12 +6,12 @@ A fully simulated microscope platform that generates realistic microscopy images
 
 | | | |
 |:---:|:---:|:---:|
-| ![bacteria](docs/gallery/bacteria.png) | ![neuron](docs/gallery/neuron.png) | ![calcium](docs/gallery/calcium.png) |
+| ![bacteria](docs/gallery/frames/bacteria_01.png) | ![neuron](docs/gallery/frames/neuron_01.png) | ![calcium](docs/gallery/frames/calcium_01.png) |
 | **bacteria** | **neuron** | **calcium** |
-| ![blood_smear](docs/gallery/blood_smear.png) | ![wound_healing](docs/gallery/wound_healing.png) | ![malaria](docs/gallery/malaria.png) |
+| ![blood_smear](docs/gallery/frames/blood_smear_01.png) | ![wound_healing](docs/gallery/frames/wound_healing_01.png) | ![malaria](docs/gallery/frames/malaria_01.png) |
 | **blood_smear** | **wound_healing** | **malaria** |
 
-See the [full gallery](docs/gallery/gallery.md) for all 34 backends.
+See the [full gallery](docs/gallery.md) for all 34 backends.
 
 ## Installation
 

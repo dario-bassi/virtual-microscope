@@ -742,7 +742,9 @@ class ColonySim:
 
     def _update_mode(self):
         """Update rendering mode from device state (Channel device)."""
-        channel = self.state_devices.get("Channel", {})
+        if "Channel" not in self.state_devices:
+            return  # keep current mode when no devices are registered
+        channel = self.state_devices["Channel"]
         label = channel.get("label", channel.get("Label", "transmitted"))
         if "transmitted" in label:
             self.mode = 0

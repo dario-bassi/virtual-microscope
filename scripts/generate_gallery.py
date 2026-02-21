@@ -17,7 +17,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from virtual_microscope._showcase_utils import make_montage
 from virtual_microscope.backends import list_backends
 
 # Backend descriptions for the gallery markdown
@@ -101,7 +100,10 @@ def main():
     else:
         backends = all_backends
 
-    results: list[tuple[str, str]] = []  # (name, png_filename)
+    frames_dir = output_dir / "frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+
+    results: list[tuple[str, list[str]]] = []  # (name, [frame filenames])
 
     for name in backends:
         print(f"[{backends.index(name) + 1}/{len(backends)}] {name}...")
@@ -109,30 +111,38 @@ def main():
         if images is None:
             continue
 
-        montage = make_montage(images, gap=2)
-        png_path = output_dir / f"{name}.png"
-        # Convert RGB to BGR for cv2
-        cv2.imwrite(str(png_path), cv2.cvtColor(montage, cv2.COLOR_RGB2BGR))
-        results.append((name, f"{name}.png"))
-        print(f"  OK: {png_path}")
+        frame_files = []
+        for i, img in enumerate(images):
+            # Resize to 256x256
+            rgb = img if img.ndim == 3 else np.stack([img]*3, axis=-1)
+            small = cv2.resize(rgb, (256, 256), interpolation=cv2.INTER_AREA)
+            fname = f"{name}_{i+1:02d}.png"
+            cv2.imwrite(str(frames_dir / fname), cv2.cvtColor(small, cv2.COLOR_RGB2BGR))
+            frame_files.append(fname)
+
+        results.append((name, frame_files))
+        print(f"  OK: {frames_dir / name}_*.png")
 
         # Clean up memory
-        del images, montage
+        del images
         gc.collect()
 
     # Generate gallery.md
     md_lines = ["# Virtual Microscope — Backend Gallery\n"]
     md_lines.append(f"Generated showcase images for **{len(results)}** of {len(all_backends)} backends.\n")
-    md_lines.append("Each row shows 4 representative images arranged in a horizontal strip.\n")
 
-    for name, png_file in results:
+    for name, frame_files in results:
         desc = DESCRIPTIONS.get(name, "")
         md_lines.append(f"## {name}\n")
         if desc:
             md_lines.append(f"{desc}\n")
-        md_lines.append(f"![{name}]({png_file})\n")
+        imgs = " ".join(
+            f'<img src="gallery/frames/{f}" width="24%">'
+            for f in frame_files
+        )
+        md_lines.append(f'<p style="display:flex;gap:4px">{imgs}</p>\n')
 
-    md_path = output_dir / "gallery.md"
+    md_path = output_dir.parent / "gallery.md"
     md_path.write_text("\n".join(md_lines))
     print(f"\nGallery written to {md_path}")
     print(f"Total: {len(results)}/{len(backends)} backends rendered successfully")

@@ -4,21 +4,23 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
+from matplotlib import colormaps as mpl_cmaps
 from virtual_microscope._showcase_utils import snap_channel
 
 
-def _plate_to_512(well_data: np.ndarray) -> np.ndarray:
+def _plate_to_512(well_data: np.ndarray, cmap_name: str = "viridis") -> np.ndarray:
     """Render 8x12 well data as a 512x512 RGB plate visualization."""
-    # Normalize to 0-255 float
+    # Normalize to 0-1 float
     arr = well_data.astype(np.float64)
     lo, hi = arr.min(), arr.max()
     if hi > lo:
-        arr = (arr - lo) / (hi - lo) * 255.0
+        norm = (arr - lo) / (hi - lo)
     else:
-        arr = np.full_like(arr, 128.0)
-    arr = arr.astype(np.uint8)
+        norm = np.full_like(arr, 0.5)
 
-    # Create a nice plate image at 512x512
+    cmap = mpl_cmaps[cmap_name]
+
+    # Create plate image at 512x512
     canvas = np.full((512, 512, 3), 30, dtype=np.uint8)  # dark background
 
     # Well layout: 8 rows x 12 cols with padding
@@ -31,18 +33,11 @@ def _plate_to_512(well_data: np.ndarray) -> np.ndarray:
         for c in range(12):
             cx = pad + c * well_w + well_w // 2
             cy = pad + r * well_h + well_h // 2
-            val = int(arr[r, c])
-            # Color: blue → green → yellow → red (heat-like)
-            if val < 85:
-                color = (val * 3, 0, 0)  # blue ramp
-            elif val < 170:
-                t = (val - 85) * 3
-                color = (255 - t, t, 0)  # blue→green
-            else:
-                t = (val - 170) * 3
-                color = (0, 255, min(t, 255))  # green→yellow/red
-            # BGR for cv2
-            bgr = (color[0], color[1], color[2])
+            rgba = cmap(float(norm[r, c]))
+            # RGB for the circle (matplotlib returns 0-1 float RGBA)
+            rgb = (int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255))
+            # cv2 uses BGR
+            bgr = (rgb[2], rgb[1], rgb[0])
             cv2.circle(canvas, (cx, cy), radius, bgr, -1, cv2.LINE_AA)
             cv2.circle(canvas, (cx, cy), radius, (80, 80, 80), 1, cv2.LINE_AA)
 
@@ -53,6 +48,7 @@ def _plate_to_512(well_data: np.ndarray) -> np.ndarray:
 def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     """Return 4 visually compelling 512x512 RGB images of the plate_reader backend.
 
+    Uses viridis colormap for clean, perceptually uniform visualization.
     1. Viability assay — 96-well heatmap
     2. ELISA assay
     3. Luminescence assay

@@ -112,8 +112,7 @@ class SimBase(ABC):
     def _update_mode(self):
         """Update rendering mode via ``_mode_map`` lookup."""
         if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
-            self.mode = 0
-            return
+            return  # keep current mode when no devices are registered
         filt = self.state_devices["Filter Wheel"]
         led = self.state_devices["LED"]
         filter_label = filt.get("label", filt.get("Label", ""))

@@ -440,7 +440,9 @@ class HemocytometerSim:
 
     def _update_mode(self):
         """Update rendering mode from device state."""
-        channel = self.state_devices.get("Channel", {})
+        if "Channel" not in self.state_devices:
+            return  # keep current mode when no devices are registered
+        channel = self.state_devices["Channel"]
         label = channel.get("label", channel.get("Label", "brightfield"))
         if "trypan" in label.lower() or "blue" in label.lower():
             self.mode = 1

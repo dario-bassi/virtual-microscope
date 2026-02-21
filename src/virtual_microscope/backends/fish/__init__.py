@@ -1,14 +1,14 @@
-"""fish backend for virtual-microscope (DynamicVoronoiSim + FISH probes)."""
+"""fish backend for virtual-microscope (FishSim + FISH probes)."""
 
 from pathlib import Path
 
-from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim
+from virtual_microscope.backends.fish.sim import FishSim
 from virtual_microscope._init_standard import load_cfg
 
 
-def create_sim(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, deleted_fraction=0.10, amplified_copies_range=(3, 6), width=512, height=512, internal_scale=4) -> DynamicVoronoiSim:
-    """Create a DynamicVoronoiSim for FISH probe imaging."""
-    return DynamicVoronoiSim(
+def create_sim(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, deleted_fraction=0.10, amplified_copies_range=(3, 6), width=512, height=512, internal_scale=4) -> FishSim:
+    """Create a FishSim for FISH probe imaging."""
+    return FishSim(
         nb_cells=n_cells,
         width=width,
         height=height,

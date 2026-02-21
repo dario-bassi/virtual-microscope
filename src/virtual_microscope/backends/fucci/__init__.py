@@ -1,14 +1,14 @@
-"""fucci backend for virtual-microscope (DynamicVoronoiSim + FUCCI reporter)."""
+"""fucci backend for virtual-microscope (FucciSim + FUCCI reporter)."""
 
 from pathlib import Path
 
-from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim
+from virtual_microscope.backends.fucci.sim import FucciSim
 from virtual_microscope._init_standard import load_cfg
 
 
-def create_sim(n_cells=60, seed=42, g1_duration=30, s_duration=15, g2_duration=10, m_duration=8, division_on_m=True, width=512, height=512, internal_scale=4) -> DynamicVoronoiSim:
-    """Create a DynamicVoronoiSim for FUCCI cell cycle imaging."""
-    return DynamicVoronoiSim(
+def create_sim(n_cells=60, seed=42, g1_duration=30, s_duration=15, g2_duration=10, m_duration=8, division_on_m=True, width=512, height=512, internal_scale=4) -> FucciSim:
+    """Create a FucciSim for FUCCI cell cycle imaging."""
+    return FucciSim(
         nb_cells=n_cells,
         width=width,
         height=height,

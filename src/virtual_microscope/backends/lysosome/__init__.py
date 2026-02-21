@@ -1,14 +1,14 @@
-"""lysosome backend for virtual-microscope (DynamicVoronoiSim + lysosomes)."""
+"""lysosome backend for virtual-microscope (LysosomeSim + lysosomes)."""
 
 from pathlib import Path
 
-from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim
+from virtual_microscope.backends.lysosome.sim import LysosomeSim
 from virtual_microscope._init_standard import load_cfg
 
 
-def create_sim(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=0.3, width=512, height=512, internal_scale=4, **kwargs) -> DynamicVoronoiSim:
-    """Create a DynamicVoronoiSim for lysosome imaging."""
-    return DynamicVoronoiSim(
+def create_sim(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=0.3, width=512, height=512, internal_scale=4, **kwargs) -> LysosomeSim:
+    """Create a LysosomeSim for lysosome imaging."""
+    return LysosomeSim(
         nb_cells=n_cells,
         width=width,
         height=height,

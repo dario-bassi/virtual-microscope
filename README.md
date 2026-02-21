@@ -28,16 +28,10 @@ from virtual_microscope.backends import load_backend
 
 core, sim = load_backend("bacteria", n_cells=50, seed=42)
 
-# Switch channels
-core.setConfig("Channel", "phase-contrast")
-img = core.snap()  # numpy array (512, 512), uint8
-
-core.setConfig("Channel", "GFP")
-gfp = core.snap()
-
-# Move the stage / adjust focus
+# Use like a real microscope
 core.setXYPosition(300, 400)
-core.setPosition("Z", 5.0)
+core.setConfig("Channel", "phase-contrast")
+img = core.snap()  # numpy array
 ```
 
 ### Direct sim access (no device layer)
@@ -53,30 +47,6 @@ img = sim.snap_frame(exposure=50.0, intensity=1.0)
 sim.step(dt=1.0)
 ```
 
-## Architecture
-
-```
-load_backend("bacteria")
-    │
-    ▼
-┌──────────────┐     ┌───────────────────┐     ┌─────────────┐
-│  UniMMCore   │────▶│ SimulationBridge   │────▶│  BacteriaSim│
-│ (device API) │     │ (snap/stage/focus/ │     │  (SimBase)  │
-│              │     │  SLM/factory)      │     │             │
-└──────────────┘     └───────────────────┘     └─────────────┘
-        │                     │                       ▲
-        │                     ▼                       │
-        │              ┌──────────────┐        ┌──────────────┐
-        │              │ SLMProcessor │        │RealtimeEngine│
-        │              │ (decay field)│        │ (bg thread)  │
-        │              └──────────────┘        └──────────────┘
-        │
-        ▼
-  SimServer, Camera, XYStage, ZStage,
-  LED, Filter Wheel, Objective, SLM,
-  Temperature, NewExperiment ...
-```
-
 ### Core components
 
 | Component | Description |
@@ -89,41 +59,6 @@ load_backend("bacteria")
 | **`NewExperimentDevice`** | pymmcore device that triggers soft reset (`sim.reset()`) or full recreation via factory. |
 | **`load_cfg()`** | Wires sim → bridge → core, loads `.cfg` device config, auto-starts `RealtimeEngine` for continuous sims. |
 
-### Sim class hierarchy
-
-```
-SimBase (ABC)                      # base/sim_base.py
-├── BacteriaSim                    # backends/bacteria/sim.py
-├── CalciumSim                     # backends/calcium/sim.py
-├── CardioSim                      # ...
-├── BloodSmearSim
-├── CelegansSim
-├── DictyosteliumSim
-├── FibroblastSim
-├── HistologySim
-├── MalariaSmearSim
-├── MicrofluidicsSim
-├── MitoSim
-├── NeuronSim
-├── OrganoidSim
-├── PlantCellSim
-├── ReactionDiffusionSim
-├── SpheroidSim
-├── SPTSim
-├── VolvoxSim
-├── YeastSim
-├── ZebrafishSim
-├── VoronoiSim                     # sims/voronoi/voronoi.py
-│   └── DynamicVoronoiSim          # sims/voronoi/tissue_dynamics.py
-│       (wound_healing, fish, fucci, lipid_droplet,
-│        lysosome, stress_granule, viability)
-└── ScatteredCellSim               # sims/cell/sim.py
-    (particle backend)
-
-Duck-typed (no SimBase):
-  ColonySim, FlowCytometrySim, GelDocSim,
-  HemocytometerSim, PlateReaderSim
-```
 
 ### How a snap works
 
@@ -282,7 +217,7 @@ src/virtual_microscope/
 ├── sims/
 │   ├── voronoi/
 │   │   ├── voronoi.py           # VoronoiSim — Voronoi tessellation tissue
-│   │   └── tissue_dynamics.py   # DynamicVoronoiSim — migration, division, wound healing
+│   │   └── tissue_dynamics.py   # DynamicVoronoiSim — migration, division, wound healing, hooks
 │   └── cell/
 │       ├── sim.py               # ScatteredCellSim (particle backend)
 │       ├── renderer.py          # Cell cycle rendering (brightfield, nucleus, membrane)
@@ -311,7 +246,12 @@ src/virtual_microscope/
 │   │   ├── sim.py               #   BacteriaSim(SimBase)
 │   │   ├── bacteria.cfg         #   device & channel config
 │   │   └── showcase.py          #   gallery image generator
-│   ├── calcium/
+│   ├── fucci/
+│   │   ├── sim.py               #   FucciSim(DynamicVoronoiSim) — FUCCI reporter
+│   │   └── ...
+│   ├── lysosome/
+│   │   ├── sim.py               #   LysosomeSim(DynamicVoronoiSim) — LysoTracker
+│   │   └── ...
 │   ├── ...                      # 34 backends total
 │   └── zebrafish/
 ├── devices/

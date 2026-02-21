@@ -1,14 +1,14 @@
-"""stress_granule backend for virtual-microscope (DynamicVoronoiSim + stress granules)."""
+"""stress_granule backend for virtual-microscope (StressGranuleSim + stress granules)."""
 
 from pathlib import Path
 
-from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim
+from virtual_microscope.backends.stress_granule.sim import StressGranuleSim
 from virtual_microscope._init_standard import load_cfg
 
 
-def create_sim(n_cells=30, seed=42, foci_radius_range=(2.0, 4.0), max_foci_per_cell=12, formation_rate=0.25, dissolution_rate=0.12, heterogeneity=0.35, width=512, height=512, internal_scale=4) -> DynamicVoronoiSim:
-    """Create a DynamicVoronoiSim for stress granule imaging."""
-    return DynamicVoronoiSim(
+def create_sim(n_cells=30, seed=42, foci_radius_range=(2.0, 4.0), max_foci_per_cell=12, formation_rate=0.25, dissolution_rate=0.12, heterogeneity=0.35, width=512, height=512, internal_scale=4) -> StressGranuleSim:
+    """Create a StressGranuleSim for stress granule imaging."""
+    return StressGranuleSim(
         nb_cells=n_cells,
         width=width,
         height=height,

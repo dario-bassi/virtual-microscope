@@ -1,14 +1,14 @@
-"""lipid_droplet backend for virtual-microscope (DynamicVoronoiSim + lipid droplets)."""
+"""lipid_droplet backend for virtual-microscope (LipidDropletSim + lipid droplets)."""
 
 from pathlib import Path
 
-from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim
+from virtual_microscope.backends.lipid_droplet.sim import LipidDropletSim
 from virtual_microscope._init_standard import load_cfg
 
 
-def create_sim(n_cells=25, seed=42, steatotic_fraction=0.4, normal_n_range=(1, 5), steatotic_n_range=(15, 40), radius_range=(3.0, 8.0), width=512, height=512, internal_scale=4) -> DynamicVoronoiSim:
-    """Create a DynamicVoronoiSim for lipid droplet imaging."""
-    return DynamicVoronoiSim(
+def create_sim(n_cells=25, seed=42, steatotic_fraction=0.4, normal_n_range=(1, 5), steatotic_n_range=(15, 40), radius_range=(3.0, 8.0), width=512, height=512, internal_scale=4) -> LipidDropletSim:
+    """Create a LipidDropletSim for lipid droplet imaging."""
+    return LipidDropletSim(
         nb_cells=n_cells,
         width=width,
         height=height,

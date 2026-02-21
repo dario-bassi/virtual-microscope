@@ -1,14 +1,14 @@
-"""viability backend for virtual-microscope (DynamicVoronoiSim + viability staining)."""
+"""viability backend for virtual-microscope (ViabilitySim + viability staining)."""
 
 from pathlib import Path
 
-from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim
+from virtual_microscope.backends.viability.sim import ViabilitySim
 from virtual_microscope._init_standard import load_cfg
 
 
-def create_sim(n_cells=60, seed=42, live_fraction=0.85, width=512, height=512, internal_scale=4) -> DynamicVoronoiSim:
-    """Create a DynamicVoronoiSim for viability staining."""
-    return DynamicVoronoiSim(
+def create_sim(n_cells=60, seed=42, live_fraction=0.85, width=512, height=512, internal_scale=4) -> ViabilitySim:
+    """Create a ViabilitySim for viability staining."""
+    return ViabilitySim(
         nb_cells=n_cells,
         width=width,
         height=height,

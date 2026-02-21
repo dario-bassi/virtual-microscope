@@ -1,8 +1,8 @@
 """hemocytometer backend for virtual-microscope."""
 
 from virtual_microscope.backends.hemocytometer.sim import HemocytometerSim
-from virtual_microscope.simulation_bridge import SimulationBridge
-import virtual_microscope.simulation_bridge as bridge_module
+from virtual_microscope.engine.simulation_bridge import SimulationBridge
+import virtual_microscope.engine.simulation_bridge as bridge_module
 from pymmcore_plus.experimental.unicore import UniMMCore
 
 
@@ -26,12 +26,15 @@ def setup_hemocytometer(n_cells=150, viability=0.85, cell_radius_range=(3, 7), d
     core = UniMMCore()
     core.unloadAllDevices()
     from virtual_microscope.devices.camera import SimCameraDevice
+    from virtual_microscope.devices.shutter import SimShutterDevice
     core.loadPyDevice("Camera", SimCameraDevice())
+    core.loadPyDevice("Shutter", SimShutterDevice())
     labels = {0: "brightfield", 1: "trypan-blue"}
     core.loadPyDevice("Channel", GenericStateDevice("Channel", labels))
-    for dev in ("Camera", "Channel"):
+    for dev in ("Camera", "Channel", "Shutter"):
         core.initializeDevice(dev)
     core.setCameraDevice("Camera")
+    core.setShutterDevice("Shutter")
     core.setState("Channel", 0)
     core.defineConfigGroup("Channel")
     core.defineConfig("Channel", "brightfield", "Channel", "Label", "brightfield")

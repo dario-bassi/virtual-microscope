@@ -1,8 +1,8 @@
 """plate_reader backend for virtual-microscope."""
 
 from virtual_microscope.backends.plate_reader.sim import PlateReaderSim
-from virtual_microscope.simulation_bridge import SimulationBridge
-import virtual_microscope.simulation_bridge as bridge_module
+from virtual_microscope.engine.simulation_bridge import SimulationBridge
+import virtual_microscope.engine.simulation_bridge as bridge_module
 from pymmcore_plus.experimental.unicore import UniMMCore
 
 
@@ -19,9 +19,13 @@ def setup_plate_reader(assay_type="viability", seed=42):
     core = UniMMCore()
     core.unloadAllDevices()
     from virtual_microscope.devices.camera import SimCameraDevice
+    from virtual_microscope.devices.shutter import SimShutterDevice
     core.loadPyDevice("Camera", SimCameraDevice())
+    core.loadPyDevice("Shutter", SimShutterDevice())
     core.initializeDevice("Camera")
+    core.initializeDevice("Shutter")
     core.setCameraDevice("Camera")
+    core.setShutterDevice("Shutter")
     # Channel based on assay type
     from virtual_microscope.backends.plate_reader.sim import ASSAY_PRESETS
     preset = ASSAY_PRESETS.get(assay_type, ASSAY_PRESETS["viability"])

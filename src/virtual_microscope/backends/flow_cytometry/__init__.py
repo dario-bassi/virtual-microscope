@@ -1,8 +1,8 @@
 """flow_cytometry backend for virtual-microscope."""
 
 from virtual_microscope.backends.flow_cytometry.sim import FlowCytometrySim
-from virtual_microscope.simulation_bridge import SimulationBridge
-import virtual_microscope.simulation_bridge as bridge_module
+from virtual_microscope.engine.simulation_bridge import SimulationBridge
+import virtual_microscope.engine.simulation_bridge as bridge_module
 from pymmcore_plus.experimental.unicore import UniMMCore
 
 
@@ -19,12 +19,15 @@ def setup_flow_cytometry_microscope(n_total=10000, events_per_snap=100, seed=42)
     core = UniMMCore()
     core.unloadAllDevices()
     from virtual_microscope.devices.camera import SimCameraDevice
+    from virtual_microscope.devices.shutter import SimShutterDevice
     core.loadPyDevice("Camera", SimCameraDevice())
+    core.loadPyDevice("Shutter", SimShutterDevice())
     core.loadPyDevice("Objective", ObjectiveDevice())
     core.loadPyDevice("Detector", GenericStateDevice("Detector", {0: "FSC-SSC", 1: "FL1-FITC", 2: "FL2-PE"}))
-    for dev in ("Camera", "Objective", "Detector"):
+    for dev in ("Camera", "Objective", "Detector", "Shutter"):
         core.initializeDevice(dev)
     core.setCameraDevice("Camera")
+    core.setShutterDevice("Shutter")
     core.setState("Objective", 0)
     core.setState("Detector", 0)
     core.defineConfigGroup("Channel")

@@ -1,8 +1,8 @@
 """gel_doc backend for virtual-microscope."""
 
 from virtual_microscope.backends.gel_doc.sim import GelDocSim
-from virtual_microscope.simulation_bridge import SimulationBridge
-import virtual_microscope.simulation_bridge as bridge_module
+from virtual_microscope.engine.simulation_bridge import SimulationBridge
+import virtual_microscope.engine.simulation_bridge as bridge_module
 from pymmcore_plus.experimental.unicore import UniMMCore
 
 
@@ -19,11 +19,14 @@ def setup_gel_doc(n_lanes=8, gel_type="western", seed=42):
     core = UniMMCore()
     core.unloadAllDevices()
     from virtual_microscope.devices.camera import SimCameraDevice
+    from virtual_microscope.devices.shutter import SimShutterDevice
     core.loadPyDevice("Camera", SimCameraDevice())
+    core.loadPyDevice("Shutter", SimShutterDevice())
     core.loadPyDevice("Objective", ObjectiveDevice())
-    for dev in ("Camera", "Objective"):
+    for dev in ("Camera", "Objective", "Shutter"):
         core.initializeDevice(dev)
     core.setCameraDevice("Camera")
+    core.setShutterDevice("Shutter")
     core.setState("Objective", 0)
     core.defineConfigGroup("Channel")
     core.defineConfig("Channel", "gel-image", "Objective", "Label", "10x")

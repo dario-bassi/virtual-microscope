@@ -1,8 +1,8 @@
 """colony_counter backend for virtual-microscope."""
 
 from virtual_microscope.backends.colony_counter.sim import ColonySim
-from virtual_microscope.simulation_bridge import SimulationBridge
-import virtual_microscope.simulation_bridge as bridge_module
+from virtual_microscope.engine.simulation_bridge import SimulationBridge
+import virtual_microscope.engine.simulation_bridge as bridge_module
 from pymmcore_plus.experimental.unicore import UniMMCore
 
 
@@ -32,12 +32,15 @@ def setup_colony_counter(n_colonies=200, plate_type="spread", seed=42, **kwargs)
     core = UniMMCore()
     core.unloadAllDevices()
     from virtual_microscope.devices.camera import SimCameraDevice
+    from virtual_microscope.devices.shutter import SimShutterDevice
     core.loadPyDevice("Camera", SimCameraDevice())
+    core.loadPyDevice("Shutter", SimShutterDevice())
     labels = {0: "transmitted", 1: "blue-filter", 2: "GFP-excitation"}
     core.loadPyDevice("Channel", GenericStateDevice("Channel", labels))
-    for dev in ("Camera", "Channel"):
+    for dev in ("Camera", "Channel", "Shutter"):
         core.initializeDevice(dev)
     core.setCameraDevice("Camera")
+    core.setShutterDevice("Shutter")
     core.setState("Channel", 0)
     core.defineConfigGroup("Channel")
     core.defineConfig("Channel", "plate-image", "Channel", "Label", "transmitted")

@@ -1,4 +1,4 @@
-from virtual_microscope.core.cell_normal import NormalCell
+from virtual_microscope.sims.cell.normal import NormalCell
 import numpy as np
 from typing import Literal, Optional
 import random
@@ -74,7 +74,7 @@ class CellCycleNormal(NormalCell):
         else:
             self.apoptosis_death_phase: Literal['Shrinkage', 'Blebbing', 'Apoptotic bodies', 'Phagocytosis'] = 'Shrinkage'
 
-        self.time_table_apoptois: dict[str, float] = {'Shrinkage': 20.0, 'Blebbing': 40.0, 'Apoptotic bodies': 50.0, 'Phagocytosis': 60.0}
+        self.time_table_apoptosis: dict[str, float] = {'Shrinkage': 20.0, 'Blebbing': 40.0, 'Apoptotic bodies': 50.0, 'Phagocytosis': 60.0}
         self.max_death_timer: float = 60.0
         self.remove_this_cell = False
         # Transition guards to prevent multiple transitions at same threshold
@@ -204,10 +204,10 @@ class CellCycleNormal(NormalCell):
             # Only transition if we haven't already transitioned from this cycle state
             if (self.current_time_life >= self.time_table_cycle[self.cell_cycle_state] and 
                 self._last_transitioned_cycle_state != self.cell_cycle_state):
-                transiction_dict = {'G1': 'S', 'S': 'G2', 'G2': 'M'}
+                transition_dict = {'G1': 'S', 'S': 'G2', 'G2': 'M'}
                 # update state
                 self._last_transitioned_cycle_state = self.cell_cycle_state  # Mark this state as transitioned
-                self.cell_cycle_state = transiction_dict[self.cell_cycle_state]  # type: ignore
+                self.cell_cycle_state = transition_dict[self.cell_cycle_state]  # type: ignore
                 # update immediately from G2  to M
                 if self.cell_cycle_state == 'M':
                     self.cell_mitosis_state = 'Prophase'
@@ -216,11 +216,11 @@ class CellCycleNormal(NormalCell):
             # Only transition if we haven't already transitioned from this mitosis state
             if (self.current_time_life >= self.time_table_mitosis[self.cell_mitosis_state] and 
                 self._last_transitioned_mitosis_state != self.cell_mitosis_state):
-                transiction_dict = {'Prophase':'Metaphase', 'Metaphase':'Anaphase', 'Anaphase':'Telophase', 'Telophase':'Cytokinesis', 'Cytokinesis':'Interphase'}
+                transition_dict = {'Prophase':'Metaphase', 'Metaphase':'Anaphase', 'Anaphase':'Telophase', 'Telophase':'Cytokinesis', 'Cytokinesis':'Interphase'}
 
                 # update mitotic state
                 self._last_transitioned_mitosis_state = self.cell_mitosis_state  # Mark this state as transitioned
-                self.cell_mitosis_state = transiction_dict[self.cell_mitosis_state]  # type: ignore
+                self.cell_mitosis_state = transition_dict[self.cell_mitosis_state]  # type: ignore
                 # Reset telophase tracker when entering telophase
                 if self.cell_mitosis_state == 'Telophase':
                     self.base_r_at_telophase = self.base_r
@@ -477,10 +477,10 @@ class CellCycleNormal(NormalCell):
     def _update_apoptosis_phase(self) -> None:
         """Update the current apoptotic phase. Only transitions once per phase."""
         
-        transiction_dict = {'Shrinkage': 'Blebbing', 'Blebbing': 'Apoptotic bodies', 'Apoptotic bodies': 'Phagocytosis'}
+        transition_dict = {'Shrinkage': 'Blebbing', 'Blebbing': 'Apoptotic bodies', 'Apoptotic bodies': 'Phagocytosis'}
 
         # Only transition if we haven't already transitioned from this apoptosis phase
-        if (self.death_timer >= self.time_table_apoptois[self.apoptosis_death_phase] and
+        if (self.death_timer >= self.time_table_apoptosis[self.apoptosis_death_phase] and
             self._last_transitioned_apoptosis_phase != self.apoptosis_death_phase):
 
             self._last_transitioned_apoptosis_phase = self.apoptosis_death_phase  # Mark this phase as transitioned
@@ -489,18 +489,18 @@ class CellCycleNormal(NormalCell):
                 # signal cell remove.
                 self.remove_this_cell = True
             else:
-                self.apoptosis_death_phase = transiction_dict[self.apoptosis_death_phase] # type: ignore
+                self.apoptosis_death_phase = transition_dict[self.apoptosis_death_phase] # type: ignore
 
 
-    def _get_shrinkage_progess(self) -> float:
+    def _get_shrinkage_progress(self) -> float:
         """Returns the progress through 'Shrinkage' phase (0-1)."""
-        shrinkage_duration = self.time_table_apoptois['Shrinkage']
+        shrinkage_duration = self.time_table_apoptosis['Shrinkage']
         progress = min(self.death_timer / shrinkage_duration, 1.0)
         return progress
 
     def _get_current_shrinkage_factor(self) -> float:
         """Returns radius multiplier of cell shrinkage (1.0 -> 0.85)."""
-        progress = self._get_shrinkage_progess()
+        progress = self._get_shrinkage_progress()
         # Linear shrinkage: start at 1.0, end at 0.85 (15% shrinkage)
         shrinkage_factor = 1.0 - (0.15 * progress)
         return shrinkage_factor

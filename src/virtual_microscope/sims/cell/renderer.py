@@ -1,10 +1,14 @@
 """Optimize rendering using OpenCV"""
 import numpy as np
 import cv2
-import random
-from typing import List, Tuple, Optional, Sequence
-from .cell_base import CellBase
-from .cell_cycle import CellCycleNormal
+from typing import List, Tuple, Sequence
+from .cell import CellBase
+from .cycle import CellCycleNormal
+from .chromatin import (
+    draw_smooth_chromatin, draw_condensed_chromatin,
+    draw_condensed_chromatin_equator, draw_condensed_chromatin_polar,
+)
+from .apoptosis import draw_apoptosis_phase
 
 
 class CellCycleRenderer:
@@ -15,8 +19,6 @@ class CellCycleRenderer:
         self.height = height # image dimension - height
         self.contrast = 0.55
         self.brightness = 0.78
-        self.blur_radius = 3 # blur kernel size
-        self.noise_std = 10 # some noise
         self.margins = 100
 
         self.dof_map = {10: 6.0, 20: 3.0, 40: 1.5} # fine-tune if necessary
@@ -46,8 +48,9 @@ class CellCycleRenderer:
         for cell in visible_cells:
             self._draw_cell(img, cell, mode, camera_offset, focal_plane)
 
-        # apply microscope filters
-        img = self._apply_filters(img, mode)
+        # Apply brightfield contrast/brightness adjustments
+        if mode == 0:
+            img = self._apply_brightfield_look(img)
 
         # crop and rescale base on the objective used
         img = self._crop_and_rescale(img)
@@ -67,8 +70,9 @@ class CellCycleRenderer:
         for cell in visible_cells:
             self._draw_cell_cycle(img, cell, camera_offset, focal_plane, mode)  # type: ignore
 
-        # apply microscope filters (noise, vignette, contrast)
-        img = self._apply_filters(img, mode)
+        # Apply brightfield contrast/brightness adjustments
+        if mode == 0:
+            img = self._apply_brightfield_look(img)
 
         # crop and rescale based on the objective used
         img = self._crop_and_rescale(img)
@@ -153,7 +157,11 @@ class CellCycleRenderer:
 
         # Handle apoptosis rendering
         if cell.is_dying:
-            self._draw_apoptosis_phase(img, cell, center_screen, vertices, chromatin_pts_screen, camera_offset, opacity, kernel_size)
+            draw_apoptosis_phase(
+                img, cell, center_screen, vertices, chromatin_pts_screen,
+                camera_offset, opacity, kernel_size,
+                self.height, self.width, self._draw_smooth_cell,
+                self.master_shape)
             return
 
         # Dispatch to mode-specific renderer
@@ -183,30 +191,37 @@ class CellCycleRenderer:
         nucleus_pos = tuple(center_screen.astype(int))
         nucleus_radius = int(0.4 * cell_radius)
 
+        center_for_chromatin = np.array(cell.center) - np.array(camera_offset)
+
         if cell.cell_mitosis_state == 'Interphase' and cell.cell_cycle_state == 'G1':
             cv2.circle(cell_img, nucleus_pos, nucleus_radius, (150, 60, 60), -1, lineType=cv2.LINE_AA)
-            self._draw_smooth_chromatin(cell_img, chromatin_pts_screen, num_strands=20)
+            draw_smooth_chromatin(cell_img, chromatin_pts_screen, num_strands=20)
         elif cell.cell_mitosis_state == 'Interphase' and cell.cell_cycle_state == 'S':
             cv2.circle(cell_img, nucleus_pos, nucleus_radius, (150, 60, 60), -1, lineType=cv2.LINE_AA)
-            self._draw_smooth_chromatin(cell_img, chromatin_pts_screen, num_strands=40)
+            draw_smooth_chromatin(cell_img, chromatin_pts_screen, num_strands=40)
         elif cell.cell_mitosis_state == 'Interphase' and cell.cell_cycle_state == 'G2':
             cv2.circle(cell_img, nucleus_pos, nucleus_radius, (150, 60, 60), -1, lineType=cv2.LINE_AA)
-            self._draw_smooth_chromatin(cell_img, chromatin_pts_screen, num_strands=40)
+            draw_smooth_chromatin(cell_img, chromatin_pts_screen, num_strands=40)
         elif cell.cell_mitosis_state == 'Prophase':
-            self._draw_condensed_chromatin(cell_img, cell, camera_offset, num_chromosome=10)
+            draw_condensed_chromatin(cell_img, center_for_chromatin, cell.base_r,
+                                    (0, 0), self.master_shape, num_chromosomes=10)
         elif cell.cell_mitosis_state == 'Metaphase':
-            self._draw_condensed_chromatin_equator(cell_img, cell, camera_offset, num_chromosome=10)
+            draw_condensed_chromatin_equator(cell_img, center_for_chromatin, cell.base_r,
+                                            self.master_shape, num_chromosomes=10)
         elif cell.cell_mitosis_state == 'Anaphase':
-            self._draw_condensed_chromatin_polar(cell_img, cell, camera_offset, num_chromosome=10)
+            draw_condensed_chromatin_polar(cell_img, center_for_chromatin, cell.base_r,
+                                          self.master_shape, num_chromosomes=10)
         elif cell.cell_mitosis_state == 'Telophase':
-            self._draw_condensed_chromatin_polar(cell_img, cell, camera_offset, num_chromosome=10)
+            draw_condensed_chromatin_polar(cell_img, center_for_chromatin, cell.base_r,
+                                          self.master_shape, num_chromosomes=10)
             pole_offset = int(cell_radius * 0.5)
             cv2.circle(cell_img, (nucleus_pos[0], nucleus_pos[1] - pole_offset),
                        int(nucleus_radius * 0.7), (150, 60, 60), -1, lineType=cv2.LINE_AA)
             cv2.circle(cell_img, (nucleus_pos[0], nucleus_pos[1] + pole_offset),
                        int(nucleus_radius * 0.7), (150, 60, 60), -1, lineType=cv2.LINE_AA)
         elif cell.cell_mitosis_state == 'Cytokinesis':
-            self._draw_condensed_chromatin_polar(cell_img, cell, camera_offset, num_chromosome=10)
+            draw_condensed_chromatin_polar(cell_img, center_for_chromatin, cell.base_r,
+                                          self.master_shape, num_chromosomes=10)
 
         if kernel_size > 0:
             cell_img = cv2.GaussianBlur(cell_img, (kernel_size, kernel_size), kernel_size / 3.0)
@@ -226,6 +241,8 @@ class CellCycleRenderer:
         # DAPI-like blue-white color
         nuc_color = (255, 200, 120)  # BGR: bright blue with some green
 
+        center_for_chromatin = np.array(cell.center) - np.array(camera_offset)
+
         if cell.cell_mitosis_state == 'Interphase':
             # Diffuse nucleus glow — interphase chromatin is decondensed
             intensity = 160 if cell.cell_cycle_state == 'G1' else 200  # S/G2 brighter (more DNA)
@@ -237,18 +254,21 @@ class CellCycleRenderer:
                 cv2.circle(cell_img, pt_int, 1, nuc_color, -1, lineType=cv2.LINE_AA)
         elif cell.cell_mitosis_state == 'Prophase':
             # Condensing chromosomes — brighter, speckled
-            self._draw_condensed_chromatin(cell_img, cell, camera_offset, num_chromosome=10)
+            draw_condensed_chromatin(cell_img, center_for_chromatin, cell.base_r,
+                                    (0, 0), self.master_shape, num_chromosomes=10)
             # Brighten the chromatin spots
             mask = cell_img[:, :, 0] > 0
             cell_img[mask] = [255, 200, 120]
         elif cell.cell_mitosis_state == 'Metaphase':
             # Bright metaphase plate — aligned chromosomes
-            self._draw_condensed_chromatin_equator(cell_img, cell, camera_offset, num_chromosome=10)
+            draw_condensed_chromatin_equator(cell_img, center_for_chromatin, cell.base_r,
+                                            self.master_shape, num_chromosomes=10)
             mask = cell_img[:, :, 0] > 0
             cell_img[mask] = [255, 220, 140]
         elif cell.cell_mitosis_state in ('Anaphase', 'Cytokinesis'):
             # Separated chromosome masses
-            self._draw_condensed_chromatin_polar(cell_img, cell, camera_offset, num_chromosome=10)
+            draw_condensed_chromatin_polar(cell_img, center_for_chromatin, cell.base_r,
+                                          self.master_shape, num_chromosomes=10)
             mask = cell_img[:, :, 0] > 0
             cell_img[mask] = [255, 200, 120]
         elif cell.cell_mitosis_state == 'Telophase':
@@ -400,83 +420,20 @@ class CellCycleRenderer:
                 # Blend with main image
                 img[:] = cv2.add(img, fluor_img)
 
-    def _apply_filters(self, img: np.ndarray, mode: int) -> np.ndarray:
-        """Apply microscope-like filters: contrast, blur, noise, vignette."""
-        if mode == 0:  # brightfield
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    def _apply_brightfield_look(self, img: np.ndarray) -> np.ndarray:
+        """Apply brightfield contrast and brightness adjustments.
 
-            img = img.astype(np.float32)
-            img = (img - 128.0) * self.contrast + 128.0
-            img = np.clip(img, 0, 255)
-
-            # Blur
-            kernel_size = 2 * self.blur_radius + 1
-            img = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
-
-            # Brightness
-            img = img * self.brightness
-            img = np.clip(img, 0, 255)
-
-            # Poisson shot noise (signal-dependent) + read noise
-            img = self._apply_realistic_noise(img)
-
-            # Vignetting + uneven illumination
-            img = self._apply_vignette(img, strength=0.15)
-            img = self._apply_uneven_illumination(img, strength=0.08)
-
-            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        else:  # fluorescence
-            kernel_size = 2 * self.blur_radius + 1
-            img = cv2.GaussianBlur(img, (kernel_size, kernel_size), 1.0)
-
-            # Poisson noise on fluorescence signal
-            img_f = img.astype(np.float32)
-            for ch in range(3):
-                if img_f[:, :, ch].max() > 0:
-                    img_f[:, :, ch] = self._apply_realistic_noise(img_f[:, :, ch])
-            img = np.clip(img_f, 0, 255).astype(np.uint8)
-
-        return img
-
-    def _apply_realistic_noise(self, img: np.ndarray) -> np.ndarray:
-        """Poisson shot noise + Gaussian read noise. Input/output: float32."""
-        img = np.clip(img, 0, 255)
-        # Poisson noise: variance proportional to signal
-        # Scale to photon-like counts, apply Poisson, scale back
-        photon_scale = 4.0  # higher = less Poisson noise
-        photons = np.random.poisson(img * photon_scale) / photon_scale
-        # Gaussian read noise
-        read_noise = np.random.normal(0, self.noise_std * 0.5, img.shape)
-        noisy = photons + read_noise
-        return np.clip(noisy, 0, 255).astype(np.uint8)
-
-    def _apply_vignette(self, img: np.ndarray, strength: float = 0.15) -> np.ndarray:
-        """Radial brightness falloff mimicking lens vignetting."""
-        h, w = img.shape[:2]
-        cy, cx = h / 2, w / 2
-        y, x = np.ogrid[:h, :w]
-        r = np.sqrt((x - cx) ** 2 + (y - cy) ** 2)
-        r_max = np.sqrt(cx ** 2 + cy ** 2)
-        vignette = 1.0 - strength * (r / r_max) ** 2
-        result = img.astype(np.float32) * vignette
-        return np.clip(result, 0, 255).astype(np.uint8)
-
-    def _apply_uneven_illumination(self, img: np.ndarray, strength: float = 0.08) -> np.ndarray:
-        """Low-frequency gradient simulating imperfect Kohler illumination.
-
-        Adds a smooth, off-center brightness gradient. The offset and
-        direction are seeded per-renderer instance for consistency within
-        a session but variation across sessions.
+        This is a rendering concern (visual tuning for BF appearance),
+        not an optical effect — those are handled by OpticalPipeline.
         """
-        h, w = img.shape[:2]
-        # Fixed offset direction (slightly off-center)
-        ox, oy = w * 0.15, h * 0.1
-        y, x = np.ogrid[:h, :w]
-        r = np.sqrt((x - w / 2 - ox) ** 2 + (y - h / 2 - oy) ** 2)
-        r_max = np.sqrt((w / 2) ** 2 + (h / 2) ** 2)
-        gradient = 1.0 + strength * (1.0 - (r / r_max))
-        result = img.astype(np.float32) * gradient
-        return np.clip(result, 0, 255).astype(np.uint8)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        img = img.astype(np.float32)
+        img = (img - 128.0) * self.contrast + 128.0
+        img = np.clip(img, 0, 255)
+        img = img * self.brightness
+        img = np.clip(img, 0, 255).astype(np.uint8)
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        return img
 
     def _make_substrate_background(self, camera_offset: Tuple[float, float] = (0, 0)) -> np.ndarray:
         """Generate a subtle substrate texture for the culture surface.
@@ -583,173 +540,6 @@ class CellCycleRenderer:
         return rescaled_img
 
 
-    def _draw_smooth_chromatin(self, img: np.ndarray, control_points: list[tuple[float, float]], num_strands: int = 46):
-        """Draw uncondensed chromatin as smooth strands using Bezier curves."""
-
-        if not control_points or len(control_points) < 2:
-            return
-        # Each chromatin strand has a curve shape through control points
-        num_points_per_strand = 30
-
-        for strand_idx in range(num_strands):
-
-            # Vary strand apperance slightly
-            offset_angle = (strand_idx / num_strands) * 2 * np.pi
-            curve_pts = []
-
-            for t in np.linspace(0, 1, num_points_per_strand):
-                # Generate smooth points between them (Quadratic Bezier)
-                p0 = np.array(control_points[0])
-                p1 = np.array(control_points[1 % len(control_points)])
-                p2 = np.array(control_points[2 % len(control_points)])
-                # Formula: B(t) = (1-t)^2*P0 + 2(1-t)t*P1 + t^2*P2
-                res = (1-t)**2 * p0 + 2*(1-t)*t * p1 + t**2 * p2
-                # append the points
-                curve_pts.append(res.astype(np.int32))
-
-            # 3. Draw the strand
-            curve_pts = np.array(curve_pts).reshape((-1, 1, 2))
-            cv2.polylines(img, [curve_pts], isClosed=False,
-                        color=(63, 0, 0), thickness=1,  # Thin chromatin strands
-                        lineType=cv2.LINE_AA) # LINE_AA is crucial for smoothness
-
-
-
-    def _get_transformed_point(self, points: np.ndarray, center: np.ndarray, angle: float, scale: float) -> np.ndarray:
-        """Transform a point: scale and rotate around center, then translate."""
-
-        # Scale all points
-        scaled = points * scale
-
-        # Rotation matrix
-        cos_a = np.cos(angle)
-        sin_a = np.sin(angle)
-
-        rot_matrix = np.array([
-            [cos_a, -sin_a],
-            [sin_a, cos_a]
-        ])
-
-        # Apply rotation to all points at once
-        rotated = scaled @ rot_matrix.T
-
-        return rotated + center
-
-    def _draw_chromosome_x(self, img: np.ndarray, center: np.ndarray,
-                           rotation: float, scale: float):
-        """Draw a chromosome at given position and rotation."""
-        # Transform all points of master shape at once
-        transformed_points = self._get_transformed_point(self.master_shape, center, rotation, scale)
-
-        # Convert to int32 for OpenCV
-        pts = transformed_points.astype(np.int32)
-
-        # Draw as filled polygon
-        cv2.fillPoly(img, [pts], (200, 0, 200), lineType=cv2.LINE_AA)  # Purple - visible over red nucleus
-
-        # Draw outline
-        cv2.polylines(img, [pts], True, (150, 0, 150), 1, lineType=cv2.LINE_AA)  # Darker purple outline
-
-
-    def _draw_condensed_chromatin(self, img: np.ndarray, cell: CellCycleNormal, camera_offset: Tuple[float, float], num_chromosome: int = 46):
-        """Draw condensed chromatin, forming a X shape inside the nucleus area."""
-
-        center = np.array(cell.center) - np.array(camera_offset)
-        nucleus_radius = int(0.4 * cell.base_r)
-
-        # Draw chromosomes scattered throught the nucleus
-        for i in range(num_chromosome):
-            # Random position within the nucleus
-            angle = (i / num_chromosome) * 2 * np.pi + np.random.uniform(-0.3, 0.3)
-            radius = np.random.uniform(0, nucleus_radius * 0.8)
-
-            chrom_x = center[0] + radius * np.cos(angle)
-            chrom_y = center[1] + radius * np.sin(angle)
-            chrom_center = np.array([chrom_x, chrom_y])
-
-            # Rotation angle for the X shape
-            rotation = np.random.uniform(0, 2 * np.pi)
-
-            self._draw_chromosome_x(img, chrom_center, rotation, scale=1.0)
-
-
-    # move condensed chromatin to the center along an axis
-    def _draw_condensed_chromatin_equator(self, img: np.ndarray, cell: CellCycleNormal, camera_offset: Tuple[float, float], num_chromosome: int = 46):
-        """Draw condensed chromatin at the equator of the cell."""
-        center = np.array(cell.center) - np.array(camera_offset)
-        cell_radius = cell.base_r
-
-        # Metaphase plate thickness
-        plate_thickness = int(cell_radius * 0.2)
-
-        # Arrange chromosome in two row along the equator
-        chromosome_per_row = num_chromosome // 2
-        spacing = (cell_radius * 1.6) / (chromosome_per_row + 1)
-
-        # Top row (y = center - offset)
-        for i in range(chromosome_per_row):
-            x_pos = center[0] - cell_radius * 0.8 + (i + 1) *spacing
-            y_pos = center[1] - plate_thickness // 2
-            chrom_center = np.array([x_pos, y_pos])
-
-            # Chromosome aligend vertically
-            rotation = np.pi / 2
-            self._draw_chromosome_x(img, chrom_center, rotation, scale=1.0)
-
-        # Bottom row (y = center + offset)
-        for i in range(num_chromosome - chromosome_per_row):
-            x_pos = center[0] - cell_radius * 0.8 + (i + 1) *spacing
-            y_pos = center[1] - plate_thickness // 2
-            chrom_center = np.array([x_pos, y_pos])
-
-            # Chromosome aligend vertically
-            rotation = np.pi / 2
-            self._draw_chromosome_x(img, chrom_center, rotation, scale=1.0)
-
-
-    # separate half of the condensed chromatin towards the polar pos in the cell
-    # and increase the cell size to double (two alonged cell)
-    def _draw_condensed_chromatin_polar(self, img: np.ndarray, cell: CellCycleNormal, camera_offset: Tuple[float, float], num_chromosome: int = 46):
-        """Draw condensed chromatin at the polar pos of the cell."""
-
-        center = np.array(cell.center) - np.array(camera_offset)
-        cell_radius = cell.base_r
-
-        # Distance of poles from center
-        pole_distance = cell_radius * 0.5
-
-        # Separate into two groups moving towards opposite poles
-        chromosomes_per_pole = num_chromosome // 2
-
-        # North pole (top)
-        pole_north = np.array([center[0], center[1] - pole_distance])
-        for i in range(chromosomes_per_pole):
-            # Scatter around pole
-            angle = (i / max(1, chromosomes_per_pole)) * 2 * np.pi
-            radius = np.random.uniform(0, cell_radius * 0.3)
-
-            chrom_x = pole_north[0] + radius * np.cos(angle)
-            chrom_y = pole_north[1] + radius * np.sin(angle)
-            chrom_center = np.array([chrom_x, chrom_y])
-
-            rotation = np.random.uniform(0, 2 * np.pi)
-            self._draw_chromosome_x(img, chrom_center, rotation, scale=0.9)
-
-        # South pole (bottom)
-        pole_south = np.array([center[0], center[1] + pole_distance])
-        for i in range(num_chromosome - chromosomes_per_pole):
-            # Scatter around pole
-            angle = (i / max(1, num_chromosome - chromosomes_per_pole)) * 2 * np.pi
-            radius = np.random.uniform(0, cell_radius * 0.3)
-
-            chrom_x = pole_south[0] + radius * np.cos(angle)
-            chrom_y = pole_south[1] + radius * np.sin(angle)
-            chrom_center = np.array([chrom_x, chrom_y])
-
-            rotation = np.random.uniform(0, 2 * np.pi)
-            self._draw_chromosome_x(img, chrom_center, rotation, scale=0.9)
-
-
     def _draw_cytokenesis_furrow(self, img: np.ndarray, cell: CellCycleNormal,
                                  center: np.ndarray, vertices: np.ndarray,
                                  furrow_depth: float = 0.3) -> None:
@@ -837,7 +627,7 @@ class CellCycleRenderer:
                    (150, 60, 60), -1, lineType=cv2.LINE_AA)
         # center_top is already in screen space, so don't subtract camera_offset again
         chromatin_top = [(center_top[0] + offset[0], center_top[1] + offset[1]) for offset in chromatin_offset_scaled]
-        self._draw_smooth_chromatin(img, chromatin_top, num_strands=46)
+        draw_smooth_chromatin(img, chromatin_top, num_strands=46)
 
         # Only draw bottom cell if it's within visible viewport bounds
         # Skip if center_bottom is outside viewport to avoid shadow artifacts
@@ -856,7 +646,7 @@ class CellCycleRenderer:
                        (150, 60, 60), -1, lineType=cv2.LINE_AA)
             # center_bottom is already in screen space, so don't subtract camera_offset again
             chromatin_bottom = [(center_bottom[0] + offset[0], center_bottom[1] + offset[1]) for offset in chromatin_offset_scaled]
-            self._draw_smooth_chromatin(img, chromatin_bottom, num_strands=46)
+            draw_smooth_chromatin(img, chromatin_bottom, num_strands=46)
 
             # Draw connecting bridge (narrowing as separation progresses)
             if separation_progress < 0.95:
@@ -869,171 +659,3 @@ class CellCycleRenderer:
                 cv2.line(img, tuple(top_connect.astype(int)),
                         tuple(bottom_connect.astype(int)),
                         bridge_color, max(1, bridge_width), lineType=cv2.LINE_AA)
-
-
-    def _draw_apoptosis_phase(self, img: np.ndarray, cell: CellCycleNormal,
-                              center_screen: np.ndarray, vertices: np.ndarray,
-                              chromatin_pts_screen: list, camera_offset: Tuple[float, float],
-                              opacity: float, kernel_size: int) -> None:
-        """Main dispatcher for apoptotic cell rendering based on phase."""
-        cell_img = np.full((self.height, self.width, 3), 0, dtype=np.uint8)
-
-        if cell.apoptosis_death_phase == 'Shrinkage':
-            self._draw_shrinkage_apoptosis(cell_img, cell, center_screen, vertices, chromatin_pts_screen, camera_offset)
-        elif cell.apoptosis_death_phase == 'Blebbing':
-            self._draw_blebbing_apoptosis(cell_img, cell, center_screen, vertices, chromatin_pts_screen)
-        elif cell.apoptosis_death_phase == 'Apoptotic bodies':
-            self._draw_apoptotic_bodies_phase(cell_img, cell, center_screen, chromatin_pts_screen, camera_offset)
-        elif cell.apoptosis_death_phase == 'Phagocytosis':
-            self._draw_phagocytosis_apoptosis(cell_img, cell, center_screen)
-
-        # Apply blur and opacity
-        if kernel_size > 0:
-            cell_img = cv2.GaussianBlur(cell_img, (kernel_size, kernel_size), kernel_size / 3.0)
-
-        apoptosis_opacity = self._get_apoptosis_opacity(cell) * opacity
-        img[:] = cv2.addWeighted(img, 1.0, cell_img, apoptosis_opacity, 0)
-
-    def _draw_shrinkage_apoptosis(self, img: np.ndarray, cell: CellCycleNormal,
-                                  center_screen: np.ndarray, vertices: np.ndarray,
-                                  chromatin_pts_screen: list, camera_offset: Tuple[float, float]) -> None:
-        """Draw shrinking cell with condensed chromatin visible inside."""
-        # Get shrinkage factor and apply to vertices
-        shrinkage_factor = cell._get_current_shrinkage_factor()
-        vertices_shrunk = center_screen + (vertices - center_screen) * shrinkage_factor
-
-        # Draw shrinking cell membrane with blue gradient layers (same as normal cell cycle)
-        layers = 10
-        for i in range(layers, 0, -1):
-            s = i / layers * shrinkage_factor
-            shade = 80 + int(100 * s / shrinkage_factor) if shrinkage_factor > 0 else 80
-            color = (shade, shade, 255)
-            scaled_verts = center_screen + (vertices_shrunk - center_screen) * (i / layers)
-            self._draw_smooth_cell(img, center_screen, scaled_verts, color, thickness=-1)
-
-        self._draw_smooth_cell(img, center_screen, vertices_shrunk, (0, 0, 0), thickness=2)
-
-        # Draw shrinking nucleus
-        nucleus_radius = int(0.4 * cell.base_r * shrinkage_factor)
-        nucleus_pos = tuple(center_screen.astype(int))
-        cv2.circle(img, nucleus_pos, nucleus_radius, (150, 60, 60), -1, lineType=cv2.LINE_AA)
-
-        # Draw condensed chromatin (nuclear material becoming more compact)
-        self._draw_condensed_chromatin(img, cell, camera_offset, num_chromosome=10)
-
-    def _draw_blebbing_apoptosis(self, img: np.ndarray, cell: CellCycleNormal,
-                                 center_screen: np.ndarray, vertices: np.ndarray,
-                                 chromatin_pts_screen: list) -> None:
-        """Draw cell with membrane blebs (8-10 protrusions) forming."""
-        blebbing_progress = (cell.death_timer - cell.time_table_apoptois['Shrinkage']) / \
-                            (cell.time_table_apoptois['Blebbing'] - cell.time_table_apoptois['Shrinkage'])
-
-        # Draw base cell at the final shrinkage size (0.85 = 15% shrinkage)
-        # Use the actual shrunk base_r from the cell physics, not hardcoded factor
-        shrinkage_factor = cell.base_r / (cell.original_base_r_for_apoptosis if hasattr(cell, 'original_base_r_for_apoptosis') else cell.base_r)
-        vertices_blebbed = center_screen + (vertices - center_screen) * shrinkage_factor
-
-        # Draw cell with blue gradient layers (same as normal cell cycle)
-        layers = 10
-        for i in range(layers, 0, -1):
-            s = i / layers * shrinkage_factor
-            shade = 80 + int(100 * s / shrinkage_factor) if shrinkage_factor > 0 else 80
-            color = (shade, shade, 255)
-            scaled_verts = center_screen + (vertices_blebbed - center_screen) * (i / layers)
-            self._draw_smooth_cell(img, center_screen, scaled_verts, color, thickness=-1)
-
-        # Generate and draw blebs (8-10) in blue color from gradient
-        bleb_positions = self._generate_bleb_points(center_screen, vertices_blebbed,
-                                                    num_blebs=int(8 + 2 * blebbing_progress))
-
-        bleb_color = (130, 130, 255)  # Blue from gradient range
-        for bleb_pos, bleb_radius in bleb_positions:
-            cv2.circle(img, tuple(bleb_pos.astype(int)), bleb_radius, bleb_color, -1, lineType=cv2.LINE_AA)
-
-        # Draw membrane outline
-        self._draw_smooth_cell(img, center_screen, vertices_blebbed, (0, 0, 0), thickness=1)
-
-        # Draw nucleus inside (intact but shrinking)
-        nucleus_radius = int(0.35 * cell.base_r * 0.7)
-        nucleus_pos = tuple(center_screen.astype(int))
-        cv2.circle(img, nucleus_pos, nucleus_radius, (150, 60, 60), -1, lineType=cv2.LINE_AA)
-
-    def _draw_apoptotic_bodies_phase(self, img: np.ndarray, cell: CellCycleNormal,
-                                     center_screen: np.ndarray, chromatin_pts_screen: list,
-                                     camera_offset: Tuple[float, float]) -> None:
-        """Draw scattered apoptotic bodies with fragmented nucleus inside."""
-        if not hasattr(cell, 'apoptotic_body_positions'):
-            return
-
-        body_radius = int(cell.base_r * 0.25)  # Each body is small
-        body_color = (130, 130, 255)  # Blue from gradient range
-
-        # Draw apoptotic bodies in blue
-        for body_pos in cell.apoptotic_body_positions:
-            body_screen = np.array([body_pos[0] - camera_offset[0], body_pos[1] - camera_offset[1]])
-            cv2.circle(img, tuple(body_screen.astype(int)), body_radius, body_color, -1, lineType=cv2.LINE_AA)
-            cv2.circle(img, tuple(body_screen.astype(int)), body_radius, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-
-    def _draw_phagocytosis_apoptosis(self, img: np.ndarray, cell: CellCycleNormal,
-                                     center_screen: np.ndarray) -> None:
-        """Draw fading apoptotic bodies with decreasing opacity."""
-        if not hasattr(cell, 'apoptotic_body_positions'):
-            return
-
-        phagocytosis_progress = (cell.death_timer - cell.time_table_apoptois['Apoptotic bodies']) / \
-                               (cell.max_death_timer - cell.time_table_apoptois['Apoptotic bodies'])
-
-        body_radius = int(cell.base_r * 0.25)
-        # Fade from blue gradient color (130, 130, 255) to black
-        fade_factor = 1.0 - phagocytosis_progress
-        fade_b = int(130 * fade_factor)
-        fade_g = int(130 * fade_factor)
-        fade_r = int(255 * fade_factor)
-
-        for body_pos in cell.apoptotic_body_positions:
-            cv2.circle(img, tuple(np.array(body_pos).astype(int)), body_radius,
-                      (fade_b, fade_g, fade_r), -1, lineType=cv2.LINE_AA)
-
-    def _generate_bleb_points(self, center_screen: np.ndarray,
-                             vertices: np.ndarray, num_blebs: int = 8) -> list:
-        """Generate bleb protrusion positions on membrane.
-
-        Returns list of (position, radius) tuples for each bleb.
-        """
-        blebs = []
-
-        # Get vertices as angles and distances
-        angles = np.linspace(0, 2 * np.pi, len(vertices), endpoint=False)
-        radii_orig = np.linalg.norm(vertices - center_screen, axis=1)
-        max_radius = np.max(radii_orig)
-
-        for i in range(num_blebs):
-            # Random position on membrane
-            angle = random.uniform(0, 2 * np.pi)
-
-            # Bleb extends outward from membrane
-            base_radius = max_radius * 0.9
-            bleb_extension = max_radius * 0.4  # Blebs can extend 40% beyond radius
-            bleb_radius = int(max_radius * 0.15)  # Size of each bleb
-
-            # Position on membrane + extension
-            bleb_distance = base_radius + bleb_extension * random.uniform(0.3, 1.0)
-
-            bleb_x = center_screen[0] + bleb_distance * np.cos(angle)
-            bleb_y = center_screen[1] + bleb_distance * np.sin(angle)
-            bleb_pos = np.array([bleb_x, bleb_y])
-
-            blebs.append((bleb_pos, bleb_radius))
-
-        return blebs
-
-    def _get_apoptosis_opacity(self, cell: CellCycleNormal) -> float:
-        """Calculate opacity for current apoptosis phase."""
-        if cell.apoptosis_death_phase == 'Phagocytosis':
-            # Fade out during phagocytosis
-            phagocytosis_progress = (cell.death_timer - cell.time_table_apoptois['Apoptotic bodies']) / \
-                                   (cell.max_death_timer - cell.time_table_apoptois['Apoptotic bodies'])
-            return 1.0 - phagocytosis_progress
-        else:
-            # Full opacity for earlier phases
-            return 1.0

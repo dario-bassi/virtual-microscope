@@ -9,7 +9,7 @@ import numba.types as nbt
 # Helpers
 # ------------------------------------------------------------ #
 @njit
-def wrap_postion(pos: np.ndarray, width: float, height: float) -> np.ndarray:
+def wrap_position(pos: np.ndarray, width: float, height: float) -> np.ndarray:
     """Wrap position for periodic boundaries conditions."""
     return np.array([pos[0] % width, pos[1] % height])
 
@@ -52,7 +52,7 @@ def update_cell_physics(center: np.ndarray, vel: np.ndarray, r: np.ndarray,
 
     # Update position
     center += vel * dt
-    center = wrap_postion(center, width, height)
+    center = wrap_position(center, width, height)
 
     # Apply friction
     vel *= max(0.0, 1.0 - friction * dt)
@@ -101,8 +101,8 @@ def check_collision(center1: np.ndarray, center2: np.ndarray,
     new_center2 = center2 + shift
 
     # Wrap position
-    new_center1 = wrap_postion(new_center1, width, height)
-    new_center2 = wrap_postion(new_center2, width, height)
+    new_center1 = wrap_position(new_center1, width, height)
+    new_center2 = wrap_position(new_center2, width, height)
 
     return True, new_center1, new_center2
 

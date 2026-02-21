@@ -3,14 +3,15 @@ import numpy as np
 import time
 from typing import Optional, List, Union, Literal, Sequence
 from virtual_microscope.base import SimBase
-from virtual_microscope.core.cell_optogenetic import OptogeneticCell
-from virtual_microscope.core.cell_drug import DrugResponseCell
-from virtual_microscope.core.cell_cycle_renderer import CellCycleRenderer
-from virtual_microscope.core.spatial_grid import SpatialGrid
-from virtual_microscope.core.cell_base import CellBase, update_all_cells_parallel, check_collision
-from virtual_microscope.core.cell_normal import NormalCell
-from virtual_microscope.core.cell_cycle import CellCycleNormal
-from virtual_microscope.core.cell_cycle_manager import CellCycleManager
+from virtual_microscope.sims.cell.optogenetic import OptogeneticCell
+from virtual_microscope.sims.cell.drug import DrugResponseCell
+from virtual_microscope.sims.cell.renderer import CellCycleRenderer
+from virtual_microscope.sims.cell.spatial_grid import SpatialGrid
+from virtual_microscope.sims.cell.cell import CellBase, update_all_cells_parallel, check_collision
+from virtual_microscope.sims.cell.normal import NormalCell
+from virtual_microscope.sims.cell.cycle import CellCycleNormal
+from virtual_microscope.sims.cell.cycle_manager import CellCycleManager
+from virtual_microscope.pipeline.optical_pipeline import OpticalPipeline
 import cv2
 
 
@@ -45,6 +46,19 @@ class ScatteredCellSim(SimBase):
         self._last_time = time.perf_counter()
         # Legacy objectif_dict (no 100x for this sim)
         self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40}
+
+        # Per-channel optical pipelines (noise, PSF, vignette)
+        self._pipeline = {
+            0: OpticalPipeline(
+                psf_sigma=0.4, noise={"photon_scale": 8.0, "read_std": 2.0},
+                vignette=0.08, rng_seed=rng_seed + 300),
+            1: OpticalPipeline(
+                psf_sigma=0.6, noise={"photon_scale": 5.0, "read_std": 2.5},
+                vignette=0.10, rng_seed=rng_seed + 301),
+            2: OpticalPipeline(
+                psf_sigma=0.6, noise={"photon_scale": 5.0, "read_std": 2.5},
+                vignette=0.10, rng_seed=rng_seed + 302),
+        }
 
         # Initialize cells based on type
         self._rng = np.random.RandomState(rng_seed)
@@ -295,13 +309,16 @@ class ScatteredCellSim(SimBase):
         if self.cell_type == "cycle":
             img = self.renderer.render_cell_cycle(
                 self._cells, self.mode,  # type: ignore
-                tuple(self.camera_offset), 
+                tuple(self.camera_offset),
                 self.focal_plane)
         else:
             img = self.renderer.render_cells(
                 self._cells, self.mode, # type: ignore
-                tuple(self.camera_offset), 
-                self.focal_plane) 
+                tuple(self.camera_offset),
+                self.focal_plane)
+
+        # Apply optical pipeline (noise, PSF, vignette)
+        img = self._apply_pipeline(img, exposure)
 
         # Apply intensity and exposure
         # Brightness is normalized: 1.0 = normal brightness (scaled by 0.01 internally)

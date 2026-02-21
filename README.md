@@ -117,7 +117,7 @@ SimBase (ABC)                      # base/sim_base.py
 │   └── DynamicVoronoiSim          # sims/voronoi/tissue_dynamics.py
 │       (wound_healing, fish, fucci, lipid_droplet,
 │        lysosome, stress_granule, viability)
-└── ScatteredCellSim               # core/scattered_cell_sim.py
+└── ScatteredCellSim               # sims/cell/sim.py
     (particle backend)
 
 Duck-typed (no SimBase):
@@ -279,14 +279,31 @@ def setup_my_backend_microscope(**kwargs):
 src/virtual_microscope/
 ├── base/
 │   └── sim_base.py              # SimBase ABC — shared microscope state & pipeline
-├── core/
-│   ├── scattered_cell_sim.py    # ScatteredCellSim (particle backend)
-│   ├── cell_cycle_manager.py    # Division/death population dynamics
-│   └── cell_cycle_renderer.py   # Mitosis/chromosome rendering
 ├── sims/
-│   └── voronoi/
-│       ├── voronoi.py           # VoronoiSim — Voronoi tessellation tissue
-│       └── tissue_dynamics.py   # DynamicVoronoiSim — migration, division, wound healing
+│   ├── voronoi/
+│   │   ├── voronoi.py           # VoronoiSim — Voronoi tessellation tissue
+│   │   └── tissue_dynamics.py   # DynamicVoronoiSim — migration, division, wound healing
+│   └── cell/
+│       ├── sim.py               # ScatteredCellSim (particle backend)
+│       ├── renderer.py          # Cell cycle rendering (brightfield, nucleus, membrane)
+│       ├── chromatin.py         # Chromatin/chromosome drawing functions
+│       ├── apoptosis.py         # Apoptosis phase rendering
+│       ├── cycle_manager.py     # Division/death population dynamics
+│       ├── cycle.py             # CellCycleNormal — cell cycle state machine
+│       ├── cell.py              # CellBase — core physics (Numba-accelerated)
+│       ├── normal.py            # NormalCell — default cell type
+│       ├── drug.py              # DrugResponseCell
+│       ├── optogenetic.py       # OptogeneticCell
+│       └── spatial_grid.py      # Spatial indexing for collision detection
+├── engine/
+│   ├── simulation_bridge.py     # SimulationBridge — sim ↔ device adapter
+│   ├── realtime.py              # RealtimeEngine — background sim thread
+│   ├── slm_processor.py         # SLMProcessor — mask mapping & decay field
+│   └── multi_field_sim.py       # MultiFieldBridge — multi-position experiments
+├── pipeline/
+│   ├── optical_pipeline.py      # OpticalPipeline — noise, PSF, vignetting
+│   ├── debris_overlay.py        # Debris/dirt overlay effects
+│   └── nuclear_texture.py       # Textured nuclear rendering
 ├── backends/
 │   ├── __init__.py              # load_backend(), list_backends()
 │   ├── bacteria/                # one directory per backend
@@ -300,10 +317,6 @@ src/virtual_microscope/
 ├── devices/
 │   ├── sim_server.py            # SimServer — main pymmcore device adapter
 │   └── new_experiment.py        # NewExperimentDevice — reset/recreate
-├── simulation_bridge.py         # SimulationBridge — sim ↔ device adapter
-├── realtime.py                  # RealtimeEngine — background sim thread
-├── slm_processor.py             # SLMProcessor — mask mapping & decay field
-├── optical_pipeline.py          # OpticalPipeline — noise, PSF, vignetting
 ├── _init_standard.py            # load_cfg() — wires everything together
 └── ...
 ```

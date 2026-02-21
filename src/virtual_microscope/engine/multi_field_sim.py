@@ -20,7 +20,7 @@ its own cells, dynamics, and rendering state.
 """
 
 import numpy as np
-from virtual_microscope.simulation_bridge import SimulationBridge
+from virtual_microscope.engine.simulation_bridge import SimulationBridge
 
 
 class MultiFieldBridge(SimulationBridge):

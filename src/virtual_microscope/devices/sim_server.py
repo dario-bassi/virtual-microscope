@@ -17,8 +17,8 @@ import logging
 from pathlib import Path
 
 from pymmcore_plus.experimental.unicore import GenericDevice
-import virtual_microscope.simulation_bridge as bridge_module
-from virtual_microscope.simulation_bridge import SimulationBridge, set_global_bridge
+import virtual_microscope.engine.simulation_bridge as bridge_module
+from virtual_microscope.engine.simulation_bridge import SimulationBridge, set_global_bridge
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ class SimServer(GenericDevice):
 
         # Auto-start RealtimeEngine for continuous sims
         if getattr(sim, 'continuous', False) and hasattr(sim, 'step'):
-            from virtual_microscope.realtime import RealtimeEngine
+            from virtual_microscope.engine.realtime import RealtimeEngine
             engine = RealtimeEngine(sim, time_scale=1.0,
                                     tick_hz=10, idle_timeout=30.0,
                                     bridge=bridge)

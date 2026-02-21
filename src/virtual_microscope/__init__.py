@@ -14,8 +14,8 @@ Or via .cfg file (requires pymmcore-plus >= 0.17.0):
 """
 
 # ── Core infrastructure ──────────────────────────────────────────────────────
-from virtual_microscope.simulation_bridge import SimulationBridge, GLOBAL_BRIDGE
-from virtual_microscope.realtime import RealtimeEngine
+from virtual_microscope.engine.simulation_bridge import SimulationBridge, GLOBAL_BRIDGE
+from virtual_microscope.engine.realtime import RealtimeEngine
 from virtual_microscope.backends import load_backend, list_backends
 
 # ── Backend setup functions ──────────────────────────────────────────────────

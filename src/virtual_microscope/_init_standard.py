@@ -16,8 +16,8 @@ from pathlib import Path
 
 from pymmcore_plus.experimental.unicore import UniMMCore
 
-import virtual_microscope.simulation_bridge as bridge_module
-from virtual_microscope.simulation_bridge import SimulationBridge, set_global_bridge
+import virtual_microscope.engine.simulation_bridge as bridge_module
+from virtual_microscope.engine.simulation_bridge import SimulationBridge, set_global_bridge
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def load_cfg(sim, cfg_path: Path, *,
     # Auto-start real-time engine for continuous sims
     should_start = realtime if realtime is not None else getattr(sim, 'continuous', False)
     if should_start and hasattr(sim, 'step'):
-        from virtual_microscope.realtime import RealtimeEngine
+        from virtual_microscope.engine.realtime import RealtimeEngine
         engine = RealtimeEngine(sim, time_scale=time_scale,
                                 tick_hz=tick_hz, idle_timeout=idle_timeout,
                                 bridge=bridge)

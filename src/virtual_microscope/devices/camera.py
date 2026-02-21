@@ -7,7 +7,7 @@ import numpy as np
 from numpy.typing import DTypeLike
 from pymmcore_plus.experimental.unicore import CameraDevice, UniMMCore
 from pymmcore_plus.experimental.unicore import pymm_property
-from virtual_microscope import simulation_bridge as bridge_module
+import virtual_microscope.engine.simulation_bridge as bridge_module
 
 class SimCameraDevice(CameraDevice):
     """

@@ -1,6 +1,6 @@
 from pymmcore_plus.experimental.unicore import StageDevice
 from pymmcore_plus import FocusDirection
-from virtual_microscope import simulation_bridge as bridge_module
+import virtual_microscope.engine.simulation_bridge as bridge_module
 
 class SimZStageDevice(StageDevice):
 

@@ -1,5 +1,5 @@
 import numpy as np
-from virtual_microscope.core.cell_base import CellBase
+from virtual_microscope.sims.cell.cell import CellBase
 
 
 class DrugResponseCell(CellBase):

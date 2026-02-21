@@ -1,7 +1,7 @@
 """Spatial indexing for fast collision detection."""
 import numpy as np
 from typing import List, Tuple, Set
-from .cell_base import CellBase
+from .cell import CellBase
 
 
 class SpatialGrid:

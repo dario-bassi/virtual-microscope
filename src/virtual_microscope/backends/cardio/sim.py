@@ -24,7 +24,7 @@ Usage via SimulationBridge:
 import numpy as np
 import cv2
 from virtual_microscope.base import SimBase
-from virtual_microscope.optical_pipeline import OpticalPipeline
+from virtual_microscope.pipeline.optical_pipeline import OpticalPipeline
 
 
 class CardioSim(SimBase):

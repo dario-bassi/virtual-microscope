@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from virtual_microscope.core.scattered_cell_sim import ScatteredCellSim
+from virtual_microscope.sims.cell.sim import ScatteredCellSim
 from virtual_microscope._init_standard import load_cfg
 
 

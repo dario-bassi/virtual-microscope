@@ -14,8 +14,8 @@ import numpy as np
 import cv2
 from scipy.spatial import Voronoi
 from virtual_microscope.base import SimBase
-from virtual_microscope.optical_pipeline import OpticalPipeline
-from virtual_microscope.nuclear_texture import render_textured_nuclei
+from virtual_microscope.pipeline.optical_pipeline import OpticalPipeline
+from virtual_microscope.pipeline.nuclear_texture import render_textured_nuclei
 
 
 class VoronoiSim(SimBase):

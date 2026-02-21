@@ -1,9 +1,9 @@
 """Cell cycle state management and population dynamics."""
 from typing import List, Optional, TYPE_CHECKING
-from virtual_microscope.core.cell_cycle import CellCycleNormal
+from virtual_microscope.sims.cell.cycle import CellCycleNormal
 
 if TYPE_CHECKING:
-    from virtual_microscope.core.scattered_cell_sim import ScatteredCellSim
+    from virtual_microscope.sims.cell.sim import ScatteredCellSim
 
 
 class CellCycleManager:

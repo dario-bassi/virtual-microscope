@@ -24,7 +24,7 @@ Usage:
 import numpy as np
 import cv2
 from scipy.ndimage import map_coordinates
-from virtual_microscope.debris_overlay import add_debris
+from virtual_microscope.pipeline.debris_overlay import add_debris
 
 
 class OpticalPipeline:

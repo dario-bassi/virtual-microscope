@@ -76,7 +76,7 @@ class SimulationBridge:
     def slm_processor(self):
         """Lazily-initialized SLMProcessor for centralized mask handling."""
         if self._slm_processor is None:
-            from virtual_microscope.slm_processor import SLMProcessor
+            from virtual_microscope.engine.slm_processor import SLMProcessor
             sim = self._sim
             w = getattr(sim, 'width', getattr(sim, 'world_size', 512))
             h = getattr(sim, 'height', getattr(sim, 'world_size', 512))

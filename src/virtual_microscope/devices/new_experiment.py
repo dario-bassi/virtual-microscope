@@ -12,7 +12,7 @@ Action auto-returns to "Ready" after each operation.
 import logging
 
 from pymmcore_plus.experimental.unicore import GenericDevice
-import virtual_microscope.simulation_bridge as bridge_module
+import virtual_microscope.engine.simulation_bridge as bridge_module
 
 logger = logging.getLogger(__name__)
 

@@ -45,7 +45,7 @@ import numpy as np
 import cv2
 from scipy.ndimage import gaussian_filter
 from virtual_microscope.base import SimBase
-from virtual_microscope.optical_pipeline import OpticalPipeline
+from virtual_microscope.pipeline.optical_pipeline import OpticalPipeline
 
 
 class SPTSim(SimBase):

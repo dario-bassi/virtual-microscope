@@ -6,7 +6,7 @@ from virtual_microscope.sims.cell.cell import CellBase
 
 class OptogeneticCell(CellBase):
 
-    def __init__(self, *args, protrusion_gain: float = 0.05, impulse: float = 10.0, **kwargs):
+    def __init__(self, *args, protrusion_gain: float = 0.05, impulse: float = 24.0, **kwargs):
         super().__init__(*args, **kwargs)
         self.protrusion_gain = protrusion_gain
         self.impulse = impulse
@@ -62,11 +62,19 @@ class OptogeneticCell(CellBase):
         self.r = np.clip(self.r, 0.4 * self.base_r, 2.2 * self.base_r)
         self._conserve_area()
 
-        # Apply impulse toward stimulated region
+        # Apply impulse toward stimulated region, scaled by fraction of
+        # vertices illuminated so partial stimulation gives proportional force.
+        # Sets the velocity component toward the light (not accumulative) so
+        # the result is frame-rate independent.  Perpendicular Brownian jitter
+        # is preserved for natural-looking motion.
         hit_vertices = vertices[idx]
         target = np.mean(hit_vertices, axis=0)
         direction = target - self.center
         norm = np.linalg.norm(direction)
 
         if norm > 0:
-            self.vel += (direction / norm) * self.impulse
+            stim_fraction = len(idx) / len(self.r)
+            direction_unit = direction / norm
+            desired_speed = self.impulse * stim_fraction
+            current_proj = np.dot(self.vel, direction_unit)
+            self.vel += direction_unit * (desired_speed - current_proj)

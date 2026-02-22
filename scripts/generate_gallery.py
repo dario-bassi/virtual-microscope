@@ -3,6 +3,7 @@
 
 Usage:
     python scripts/generate_gallery.py [--output-dir docs/gallery] [--backends bacteria,neuron]
+    python scripts/generate_gallery.py --md-only          # regenerate gallery.md without re-rendering images
 """
 
 from __future__ import annotations
@@ -14,49 +15,93 @@ import sys
 import traceback
 from pathlib import Path
 
-import cv2
 import numpy as np
 
-from virtual_microscope.backends import list_backends
+from virtual_microscope.backends import list_backends, describe_backends
 
-# Backend descriptions for the gallery markdown
-DESCRIPTIONS: dict[str, str] = {
-    "bacteria": "Rod-shaped bacteria with phase contrast, GFP fluorescence, and colony growth dynamics.",
-    "blood_smear": "Wright-Giemsa stained peripheral blood smear with RBCs, WBCs, and platelets.",
-    "calcium": "FitzHugh-Nagumo calcium wave propagation with GCaMP fluorescence imaging.",
-    "cardio": "Cardiac tissue with calcium transients, contraction, and arrhythmia modeling.",
-    "celegans": "C. elegans nematode with sinusoidal locomotion and transgenic fluorescence.",
-    "colony_counter": "Bacterial colony plates with spread/streak patterns and blue-white screening.",
-    "dictyostelium": "Dictyostelium aggregation with cAMP waves and chemotactic streaming.",
-    "fibroblast": "Elongated fibroblasts with stress fibers, focal adhesions, and drug responses.",
-    "fish": "FISH (fluorescence in situ hybridization) probes on tissue sections.",
-    "flow_cytometry": "Flow cytometry with FSC/SSC scatter and multi-color fluorescence channels.",
-    "fucci": "FUCCI cell cycle reporter with G1-red (Cdt1) and S/G2/M-green (Geminin).",
-    "gel_doc": "Gel electrophoresis documentation: western blots, agarose gels, Coomassie staining.",
-    "hemocytometer": "Neubauer hemocytometer with trypan blue viability staining and grid overlay.",
-    "histology": "H&E stained tissue histology sections with glandular architecture.",
-    "lipid_droplet": "Hepatocytes with lipid droplets (Nile Red) modeling steatosis.",
-    "lysosome": "LysoTracker-stained lysosomes with dynamic intracellular movement.",
-    "malaria": "Giemsa-stained blood smear with Plasmodium falciparum parasites at various stages.",
-    "microfluidics": "Microfluidic channel with flowing cells, traps, and chemical gradients.",
-    "mito": "Mitochondrial network with MitoTracker staining, fission, and fusion dynamics.",
-    "neuron": "Primary neurons with MAP2 dendrites and synaptophysin synaptic puncta.",
-    "organoid": "3D organoid cross-section with lumen, epithelial layer, and E-cadherin staining.",
-    "particle": "Basic particle simulation with scattered fluorescent cells.",
-    "plant_cell": "Plant cells with cell walls, chloroplasts, and iodine/Calcofluor White staining.",
-    "plate_reader": "96-well microplate reader with viability, ELISA, and luminescence assays.",
-    "reaction_diffusion": "Gray-Scott reaction-diffusion patterns (Turing patterns, waves, spots).",
-    "spheroid": "Multicellular tumor spheroid with necrotic core and live/dead staining.",
-    "spt": "Single-particle tracking with free, confined, and directed diffusion modes.",
-    "stress_granule": "Stress granules (G3BP1) with dynamic formation and dissolution.",
-    "viability": "Live/dead cell viability assay with calcein-AM and propidium iodide.",
-    "volvox": "Volvox colonial algae with somatic cells and gonidia, chlorophyll fluorescence.",
-    "voronoi": "Basic Voronoi tissue simulation with brightfield, nucleus, and membrane channels.",
-    "wound_healing": "Scratch wound healing assay with cell migration and gap closure dynamics.",
-    "yeast": "Budding yeast (S. cerevisiae) with Calcofluor White bud scars and GFP reporter.",
-    "zebrafish": "Zebrafish embryo with transgenic vascular (flk1:GFP) and cardiac (myl7:mCherry) reporters.",
-}
 
+# ── Badge helpers ────────────────────────────────────────────────────────────
+
+_TAG = (
+    '<span style="display:inline-block;padding:2px 10px;border-radius:12px;'
+    'font-family:Arial,sans-serif;font-size:13px;'
+    'background:{bg};color:{fg}">{label}</span>'
+)
+
+
+def _tag(label: str, bg: str, fg: str) -> str:
+    return _TAG.format(bg=bg, fg=fg, label=label)
+
+
+def _channel_badge(ch: str) -> str:
+    return _tag(ch, "#ADD3FF", "#1a4a7a")
+
+
+def _device_badge(dev: str) -> str:
+    return _tag(dev, "#DBC8FF", "#4a2d7a")
+
+
+def _dynamics_badge(continuous: bool) -> str:
+    if continuous:
+        return _tag("continuous", "#AFE2BD", "#1a5c2e")
+    return _tag("static", "#CBCBCC", "#3a3a3a")
+
+
+# ── Gallery markdown generation ─────────────────────────────────────────────
+
+def generate_md(
+    results: list[tuple[str, list[str]]],
+    backend_info: dict[str, dict],
+) -> str:
+    """Build gallery.md content from render results and BACKEND_INFO."""
+    lines = ["# Virtual Microscope — Backend Gallery\n"]
+    lines.append(
+        f"Showcase images and short description for **{len(results)}** backends.\n"
+    )
+    # Legend
+    lines.append(
+        f"Dynamics: {_dynamics_badge(True)} {_dynamics_badge(False)}\n"
+        f"Available imaging channels: {_channel_badge('channel')}\n"
+        f"Extra hardware devices: {_device_badge('device')}\n"
+    )
+    lines.append("---\n")
+
+    for name, frame_files in results:
+        info = backend_info.get(name, {})
+        desc = info.get("description", "")
+        channels = info.get("channels", [])
+        continuous = info.get("continuous", False)
+        extra = info.get("extra_devices", [])
+
+        # Title
+        lines.append(f"## {name}\n")
+
+        # Description
+        if desc:
+            lines.append(f"{desc}\n")
+
+        # Image grid
+        imgs = " ".join(
+            f'<img src="gallery/frames/{f}" width="24%">'
+            for f in frame_files
+        )
+        lines.append(f'<p style="display:flex;gap:4px">{imgs}</p>\n')
+
+        # Badges row
+        badges: list[str] = []
+        badges.append(_dynamics_badge(continuous))
+        for ch in channels:
+            badges.append(_channel_badge(ch))
+        for dev in extra:
+            badges.append(_device_badge(dev))
+
+        if badges:
+            lines.append(" ".join(badges) + "\n")
+
+    return "\n".join(lines)
+
+
+# ── Showcase runner ──────────────────────────────────────────────────────────
 
 def run_showcase(name: str, seed: int = 0) -> list[np.ndarray] | None:
     """Import and run a backend's create_showcase_images, returning images or None."""
@@ -80,17 +125,22 @@ def run_showcase(name: str, seed: int = 0) -> list[np.ndarray] | None:
         return None
 
 
+# ── Main ─────────────────────────────────────────────────────────────────────
+
 def main():
     parser = argparse.ArgumentParser(description="Generate virtual-microscope backend gallery")
     parser.add_argument("--output-dir", default="docs/gallery", help="Output directory for gallery")
     parser.add_argument("--backends", default=None, help="Comma-separated list of backends (default: all)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for showcase images")
+    parser.add_argument("--md-only", action="store_true", help="Regenerate gallery.md without re-rendering images")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     all_backends = list_backends()
+    backend_info = describe_backends()
+
     if args.backends:
         backends = [b.strip() for b in args.backends.split(",")]
         invalid = set(backends) - set(all_backends)
@@ -103,49 +153,48 @@ def main():
     frames_dir = output_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
 
-    results: list[tuple[str, list[str]]] = []  # (name, [frame filenames])
+    if args.md_only:
+        # Discover existing frames
+        results: list[tuple[str, list[str]]] = []
+        for name in backends:
+            frame_files = sorted(
+                f.name for f in frames_dir.glob(f"{name}_*.png")
+            )
+            if len(frame_files) >= 4:
+                results.append((name, frame_files[:4]))
+        print(f"Found existing frames for {len(results)}/{len(backends)} backends")
+    else:
+        import cv2
 
-    for name in backends:
-        print(f"[{backends.index(name) + 1}/{len(backends)}] {name}...")
-        images = run_showcase(name, seed=args.seed)
-        if images is None:
-            continue
+        results = []
+        for idx, name in enumerate(backends, 1):
+            print(f"[{idx}/{len(backends)}] {name}...")
+            images = run_showcase(name, seed=args.seed)
+            if images is None:
+                continue
 
-        frame_files = []
-        for i, img in enumerate(images):
-            # Resize to 256x256
-            rgb = img if img.ndim == 3 else np.stack([img]*3, axis=-1)
-            small = cv2.resize(rgb, (256, 256), interpolation=cv2.INTER_AREA)
-            fname = f"{name}_{i+1:02d}.png"
-            cv2.imwrite(str(frames_dir / fname), cv2.cvtColor(small, cv2.COLOR_RGB2BGR))
-            frame_files.append(fname)
+            frame_files = []
+            for i, img in enumerate(images):
+                # Resize to 256x256
+                rgb = img if img.ndim == 3 else np.stack([img]*3, axis=-1)
+                small = cv2.resize(rgb, (256, 256), interpolation=cv2.INTER_AREA)
+                fname = f"{name}_{i+1:02d}.png"
+                cv2.imwrite(str(frames_dir / fname), cv2.cvtColor(small, cv2.COLOR_RGB2BGR))
+                frame_files.append(fname)
 
-        results.append((name, frame_files))
-        print(f"  OK: {frames_dir / name}_*.png")
+            results.append((name, frame_files))
+            print(f"  OK: {frames_dir / name}_*.png")
 
-        # Clean up memory
-        del images
-        gc.collect()
+            # Clean up memory
+            del images
+            gc.collect()
 
     # Generate gallery.md
-    md_lines = ["# Virtual Microscope — Backend Gallery\n"]
-    md_lines.append(f"Generated showcase images for **{len(results)}** of {len(all_backends)} backends.\n")
-
-    for name, frame_files in results:
-        desc = DESCRIPTIONS.get(name, "")
-        md_lines.append(f"## {name}\n")
-        if desc:
-            md_lines.append(f"{desc}\n")
-        imgs = " ".join(
-            f'<img src="gallery/frames/{f}" width="24%">'
-            for f in frame_files
-        )
-        md_lines.append(f'<p style="display:flex;gap:4px">{imgs}</p>\n')
-
+    md_content = generate_md(results, backend_info)
     md_path = output_dir.parent / "gallery.md"
-    md_path.write_text("\n".join(md_lines))
+    md_path.write_text(md_content)
     print(f"\nGallery written to {md_path}")
-    print(f"Total: {len(results)}/{len(backends)} backends rendered successfully")
+    print(f"Total: {len(results)}/{len(backends)} backends")
 
 
 if __name__ == "__main__":

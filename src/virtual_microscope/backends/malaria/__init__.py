@@ -1,5 +1,12 @@
 """malaria backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates a Giemsa-stained malaria blood smear with intra-erythrocytic Plasmodium parasites. Features configurable parasitemia, stage progression, and appliqué forms.",
+    "channels": ["giemsa", "chromatin-aid", "RBC-overlay"],
+    "continuous": False,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.malaria.sim import MalariaSmearSim

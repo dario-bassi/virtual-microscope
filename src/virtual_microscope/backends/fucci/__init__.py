@@ -1,5 +1,12 @@
 """fucci backend for virtual-microscope (FucciSim + FUCCI reporter)."""
 
+BACKEND_INFO = {
+    "description": "Simulates FUCCI cell-cycle reporter with mCherry-Cdt1 (G1) and mVenus-Geminin (S/G2/M). Features configurable phase durations with temperature and perfusion.",
+    "channels": ["phase-contrast", "mCherry-Cdt1", "mVenus-Geminin"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Perfusion"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.fucci.sim import FucciSim

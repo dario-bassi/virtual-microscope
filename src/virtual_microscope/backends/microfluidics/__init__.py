@@ -1,5 +1,12 @@
 """microfluidics backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates cells flowing through a microfluidic channel with optional traps and chemical gradients. Supports temperature and perfusion control.",
+    "channels": ["phase-contrast", "DAPI", "fluorescein"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Perfusion"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.microfluidics.sim import MicrofluidicsSim

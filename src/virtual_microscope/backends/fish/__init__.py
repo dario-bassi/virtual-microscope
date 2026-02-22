@@ -1,5 +1,12 @@
 """fish backend for virtual-microscope (FishSim + FISH probes)."""
 
+BACKEND_INFO = {
+    "description": "Simulates fluorescence in situ hybridisation (FISH) with punctate probe signals in nuclei. Supports gene amplification and deletion with temperature, perfusion, and electrode.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Perfusion", "Electrode"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.fish.sim import FishSim

@@ -1,5 +1,12 @@
 """dictyostelium backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates Dictyostelium discoideum chemotaxis with cAMP wave relay. Features pacemaker-driven aggregation with SLM stimulation and temperature control.",
+    "channels": ["dark-field", "GFP", "cAMP-reporter"],
+    "continuous": True,
+    "extra_devices": ["SLM", "Temperature"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.dictyostelium.sim import DictyosteliumSim

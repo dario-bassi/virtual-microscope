@@ -63,7 +63,9 @@ class ScatteredCellSim(SimBase):
 
         # Create cell objects
         self._cells = self._create_cells()
+        self._resolve_initial_overlaps()
         self._init_numpy_arrays()
+        self._step_count = 0
 
         # Initialize cell cycle manager if using cell cycle cells
         self.cycle_manager: Optional[CellCycleManager] = None
@@ -137,7 +139,42 @@ class ScatteredCellSim(SimBase):
             #self.n_cells = len(cells)
 
         return cells
-    
+
+    def _resolve_initial_overlaps(self, min_gap: float = 2.0,
+                                  max_attempts: int = 500) -> None:
+        """Reposition cells so none overlap at initialisation.
+
+        For each cell, rejection-sample a new position until it is at
+        least ``base_r_i + base_r_j + min_gap`` from every previously
+        placed cell (with periodic wrapping).  Falls back to the
+        original position if *max_attempts* is exhausted.
+        """
+        placed: list[tuple[np.ndarray, float]] = []  # (center, base_r)
+        w, h = self.width, self.height
+
+        for cell in self._cells:
+            for _ in range(max_attempts):
+                candidate = np.array([
+                    self._rng.uniform(0, w),
+                    self._rng.uniform(0, h),
+                ], dtype=np.float64)
+
+                ok = True
+                for other_center, other_r in placed:
+                    dvec = candidate - other_center
+                    dvec[0] -= w * round(dvec[0] / w)
+                    dvec[1] -= h * round(dvec[1] / h)
+                    dist = np.sqrt(dvec[0] ** 2 + dvec[1] ** 2)
+                    if dist < cell.base_r + other_r + min_gap:
+                        ok = False
+                        break
+
+                if ok:
+                    cell.center = candidate
+                    break
+
+            placed.append((cell.center.copy(), cell.base_r))
+
     def _init_numpy_arrays(self):
         """Initialize numpy arrays from cell objects for fast physics."""
         self.centers = np.zeros((self.n_cells, 2), dtype=np.float64)
@@ -191,8 +228,10 @@ class ScatteredCellSim(SimBase):
         """Advance physics by *dt*.  Called by RealtimeEngine or manually."""
         update_all_cells_parallel(
             self.centers, self.velocities, self.radii, self.angles,
-            self.base_radii, self.areas, self.width, self.height, dt
+            self.base_radii, self.areas, self.width, self.height, dt,
+            step_count=self._step_count,
         )
+        self._step_count += 1
 
         # Sync back to cell objects
         self._sync_arrays_to_cells()
@@ -204,6 +243,12 @@ class ScatteredCellSim(SimBase):
 
         # Handle collisions
         self._handle_collisions_with_spatial_grid()
+
+        # Sync collision/behavior changes back to arrays so next step
+        # starts from the corrected positions and velocities
+        for i, cell in enumerate(self._cells):
+            self.centers[i] = cell.center
+            self.velocities[i] = cell.vel
 
         # Update cell cycle dynamics (divisions, apoptosis)
         # This modifies self._cells (adds/removes cells), so do it last
@@ -275,51 +320,48 @@ class ScatteredCellSim(SimBase):
             self.areas[i] = cell.area0
 
     
-    def snap_frame(self, mask: Optional[np.ndarray] = None, intensity: float = 1.0, exposure = 1.0) -> np.ndarray:
-        """Capture a frame with optional stimulation.
-
-        Physics is handled by ``step()`` (driven by RealtimeEngine or called
-        manually).  ``snap_frame()`` only renders the current state and
-        optionally applies an SLM mask.
-        """
-        # Apply optogentic stimulation if mask is provided
-        if mask is not None and self.cell_type == "optogenetic":
+    def _handle_mask(self, mask: np.ndarray) -> None:
+        """Process an SLM mask for optogenetic stimulation or drug response."""
+        if self.cell_type == "optogenetic":
             self.apply_optogenetic_stimulator(mask)
-        elif mask is not None and self.cell_type == "drug":
-            if np.any(mask): # Only if mask has True values
+        elif self.cell_type == "drug":
+            if np.any(mask):
                 self.apply_drug(self.concentration, self.drug_type)
 
-        # determine rendering mode from state devices
-        self._update_mode()
+    def _render_for_mode(self, mode: int) -> np.ndarray:
+        """Render the current cell state for the given channel mode.
 
-        # determine objective render from state devices
-        self._update_objectif()
-
+        Updates per-cell fluorescence, then delegates to the CellCycleRenderer.
+        Returns a BGR uint8 image at viewport resolution (internal_scale=1,
+        so _crop_fov is a no-op identity).
+        """
         # Update cell fluorescence based on mode
         for cell in self._cells:
-            self._update_cell_fluorescence(cell, self.mode)
+            self._update_cell_fluorescence(cell, mode)
 
         # Render frame based on cell type
         if self.cell_type == "cycle":
             img = self.renderer.render_cell_cycle(
-                self._cells, self.mode,  # type: ignore
+                self._cells, mode,  # type: ignore
                 tuple(self.camera_offset),
                 self.focal_plane)
         else:
             img = self.renderer.render_cells(
-                self._cells, self.mode, # type: ignore
+                self._cells, mode,  # type: ignore
                 tuple(self.camera_offset),
                 self.focal_plane)
 
-        # Apply optical pipeline (noise, PSF, vignette)
-        img = self._apply_pipeline(img, exposure)
+        return img
 
-        # Apply intensity and exposure
-        # Brightness is normalized: 1.0 = normal brightness (scaled by 0.01 internally)
-        img = (img.astype(np.float32) * intensity * 0.01 * exposure).clip(0,255).astype(np.uint8)
+    def _apply_exposure(self, viewport: np.ndarray, exposure: float,
+                        intensity: float) -> np.ndarray:
+        """Apply uniform exposure scaling for all modes.
 
-        # return grayscale for compatibility
-        return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        ScatteredCellSim uses a single formula (intensity * 0.01 * exposure)
+        for all channels, unlike the base class which uses 2x for BF mode.
+        """
+        scale = intensity * 0.01 * exposure
+        return (viewport.astype(np.float32) * scale).clip(0, 255).astype(np.uint8)
 
 
     def _on_objective_changed(self, mag: int, dof: float) -> None:
@@ -359,4 +401,6 @@ class ScatteredCellSim(SimBase):
     def reset(self) -> None:
         """Reset simulation."""
         self._cells = self._create_cells()
+        self._resolve_initial_overlaps()
         self._init_numpy_arrays()
+        self._step_count = 0

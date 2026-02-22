@@ -1,5 +1,12 @@
 """zebrafish backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates a zebrafish embryo tail with beating heart and circulating RBCs. Features flk1-GFP vasculature and myl7-mCherry cardiac marker with temperature and anesthesia.",
+    "channels": ["brightfield", "flk1-GFP", "myl7-mCherry"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Anesthesia"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.zebrafish.sim import ZebrafishSim

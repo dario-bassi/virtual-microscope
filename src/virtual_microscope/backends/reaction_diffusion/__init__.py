@@ -1,5 +1,12 @@
 """reaction_diffusion backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates Gray-Scott reaction-diffusion Turing patterns with activator and inhibitor species. Supports SLM-based perturbation with configurable F/K parameters.",
+    "channels": ["both-species", "activator-U", "inhibitor-V"],
+    "continuous": True,
+    "extra_devices": ["SLM", "SLM-Mode"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.reaction_diffusion.sim import ReactionDiffusionSim

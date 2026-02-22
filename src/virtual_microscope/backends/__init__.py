@@ -2,7 +2,7 @@
 
 Each backend is a subdirectory with an __init__.py exposing:
   - create_sim(**params) -> SomeSimClass
-  - setup_<name>_microscope(**params) -> (core, sim)
+  - setup_<name>(**params) -> (core, sim)
 
 Programmatic use:
     from virtual_microscope.backends import load_backend, list_backends
@@ -11,6 +11,7 @@ Programmatic use:
 """
 
 from __future__ import annotations
+import importlib
 from pathlib import Path
 
 
@@ -33,7 +34,6 @@ def load_backend(name: str, **kwargs):
     Returns:
         (core, sim) tuple — or just core for the particle backend.
     """
-    import importlib
     mod = importlib.import_module(f"virtual_microscope.backends.{name}")
     fn_name = f"setup_{name}"
     fn = getattr(mod, fn_name, None)
@@ -43,3 +43,14 @@ def load_backend(name: str, **kwargs):
             f"(expected setup_{name})"
         )
     return fn(**kwargs)
+
+
+def describe_backend(name: str) -> dict:
+    """Return BACKEND_INFO metadata for a single backend."""
+    mod = importlib.import_module(f"virtual_microscope.backends.{name}")
+    return getattr(mod, "BACKEND_INFO", {})
+
+
+def describe_backends() -> dict[str, dict]:
+    """Return BACKEND_INFO for all discovered backends."""
+    return {name: describe_backend(name) for name in list_backends()}

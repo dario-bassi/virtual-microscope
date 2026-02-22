@@ -1,5 +1,12 @@
 """spt backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates single-particle tracking with free, confined, and directed diffusion modes. Features blinking, bleaching, and widefield/TIRF illumination.",
+    "channels": ["widefield", "TIRF"],
+    "continuous": True,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.spt.sim import SPTSim

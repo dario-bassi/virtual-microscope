@@ -1,5 +1,12 @@
 """celegans backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates a crawling C. elegans nematode with sinusoidal body bending. Features pharyngeal GFP and body-wall mCherry with temperature, perfusion, and electrode control.",
+    "channels": ["DIC", "GFP-pharynx", "mCherry-body"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Perfusion"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.celegans.sim import CelegansSim

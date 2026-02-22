@@ -1,5 +1,12 @@
 """calcium backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates calcium wave propagation across an epithelial cell monolayer. Features GCaMP reporter with SLM-triggered stimulation and temperature control.",
+    "channels": ["phase-contrast", "GCaMP", "E-cadherin"],
+    "continuous": True,
+    "extra_devices": ["SLM", "SLM-Mode", "Temperature"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.calcium.sim import CalciumSim

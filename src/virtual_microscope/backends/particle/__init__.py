@@ -1,5 +1,12 @@
 """particle backend for virtual-microscope (ScatteredCellSim)."""
 
+BACKEND_INFO = {
+    "description": "Simulates scattered vertex-based cells as generic particles for basic microscopy. Provides phase-contrast, DAPI, and membrane channels.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": True,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.sims.cell.sim import ScatteredCellSim

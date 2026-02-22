@@ -1,5 +1,12 @@
 """fibroblast backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates adherent fibroblasts with actin stress fibres and focal adhesions. Supports temperature, perfusion, and mechanical stretch.",
+    "channels": ["brightfield", "DAPI", "phalloidin"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Perfusion", "Stretch"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.fibroblast.sim import FibroblastSim

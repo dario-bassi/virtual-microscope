@@ -1,5 +1,12 @@
 """viability backend for virtual-microscope (ViabilitySim + viability staining)."""
 
+BACKEND_INFO = {
+    "description": "Simulates live/dead viability staining with Calcein-AM and Ethidium homodimer-1. Features configurable live fraction with temperature and perfusion.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Perfusion"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.viability.sim import ViabilitySim

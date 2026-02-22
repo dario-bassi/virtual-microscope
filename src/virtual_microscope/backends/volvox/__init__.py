@@ -1,5 +1,12 @@
 """volvox backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates a swimming Volvox colony with somatic cells and gonidia. Features SLM phototaxis control with chlorophyll and pherophorin channels.",
+    "channels": ["brightfield", "chlorophyll", "pherophorin"],
+    "continuous": True,
+    "extra_devices": ["SLM", "Temperature"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.volvox.sim import VolvoxSim

@@ -1,5 +1,12 @@
 """wound_healing backend for virtual-microscope (DynamicVoronoiSim with wound)."""
 
+BACKEND_INFO = {
+    "description": "Simulates a scratch-wound healing assay with migrating epithelial cells. Supports SLM, temperature, perfusion, and electrode for wound closure studies.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": True,
+    "extra_devices": ["SLM", "Temperature", "Perfusion", "Electrode"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.sims.voronoi.tissue_dynamics import DynamicVoronoiSim

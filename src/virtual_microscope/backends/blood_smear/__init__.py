@@ -1,5 +1,12 @@
 """blood_smear backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates a stained peripheral blood smear with RBCs, WBCs, and platelets. Supports abnormal morphologies and rouleaux formation.",
+    "channels": ["wright-giemsa", "nuclei-aid", "membrane-aid"],
+    "continuous": False,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.blood_smear.sim import BloodSmearSim

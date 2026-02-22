@@ -1,5 +1,12 @@
 """yeast backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates budding yeast (S. cerevisiae) with cell-wall Calcofluor-White staining and GFP reporter. Supports temperature control and configurable division time.",
+    "channels": ["phase-contrast", "Calcofluor-White", "GFP-reporter"],
+    "continuous": False,
+    "extra_devices": ["Temperature"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.yeast.sim import YeastSim

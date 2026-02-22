@@ -39,7 +39,7 @@ def calculate_vertices(center: np.ndarray, angles: np.ndarray, r: np.ndarray) ->
 def update_cell_physics(center: np.ndarray, vel: np.ndarray, r: np.ndarray,
                          angles: np.ndarray, base_r: float, area0: float,
                          width: float, height: float, dt: float,
-                         friction: float = 3.0, brownian_d: float = 80.0,
+                         friction: float = 3.0, brownian_d: float = 15.0,
                          curvature_relax: float = 0.12, radial_relax: float = 0.08,
                          ruffle_std: float = 0.01, seed: int = 0) -> tuple:
     """Update cell physics"""
@@ -96,7 +96,7 @@ def check_collision(center1: np.ndarray, center2: np.ndarray,
     
     # resolve collision
     n = dvec / dist
-    shift = 0.5 * (overlap + 0.5) * n
+    shift = 0.5 * (overlap + 0.01) * n
     new_center1 = center1 - shift
     new_center2 = center2 + shift
 
@@ -112,13 +112,15 @@ def update_all_cells_parallel(centers: np.ndarray, velocities: np.ndarray,
                               radii: np.ndarray, angles: np.ndarray,
                               base_radii: np.ndarray, areas: np.ndarray,
                               width: float, height: float, dt: float,
-                              friction: float = 3.0, brownian_d: float = 80.0) -> None:
+                              friction: float = 3.0, brownian_d: float = 15.0,
+                              step_count: int = 0) -> None:
     """Update all cells in parallel using Numba prange"""
     n_cells = len(centers)
     for i in prange(n_cells): # parallel loop
         centers[i], velocities[i], radii[i] = update_cell_physics(
-            centers[i], velocities[i], radii[i], angles,base_radii[i], areas[i], 
-        width, height, dt, friction, brownian_d, seed=i
+            centers[i], velocities[i], radii[i], angles, base_radii[i], areas[i],
+            width, height, dt, friction, brownian_d,
+            seed=i + step_count * n_cells
         )
 
 
@@ -149,9 +151,9 @@ class CellBase:
         self.vel = np.zeros(2, dtype=np.float64)
         self.z_position: float = 0.0
 
-        # Physics paramters
+        # Physics parameters
         self.friction: float = 3.0
-        self.brownian_d: float = 80.0
+        self.brownian_d: float = 15.0
         self.curvature_relax: float = 0.15
         self.radial_relax: float = 0.10
         self.ruffle_std: float = 0.03

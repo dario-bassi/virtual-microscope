@@ -1,5 +1,12 @@
 """neuron backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates cultured neurons with branching dendrites and axons. Features MAP2-GFP and synaptophysin markers for neuronal morphology.",
+    "channels": ["phase-contrast", "MAP2-GFP", "synaptophysin"],
+    "continuous": True,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.neuron.sim import NeuronSim

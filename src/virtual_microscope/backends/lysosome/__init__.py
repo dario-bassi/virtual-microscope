@@ -1,5 +1,12 @@
 """lysosome backend for virtual-microscope (LysosomeSim + lysosomes)."""
 
+BACKEND_INFO = {
+    "description": "Simulates lysosomal trafficking with LysoTracker-stained puncta undergoing Brownian motion. Features configurable lysosome count and diffusion rate with temperature and perfusion.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Perfusion"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.lysosome.sim import LysosomeSim

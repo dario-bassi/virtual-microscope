@@ -1,9 +1,13 @@
 """colony_counter backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates bacterial colony plates for colony counting assays. Supports spread/streak plate types with optional blue-white screening and GFP.",
+    "channels": ["plate-image", "blue-channel", "gfp-channel"],
+    "continuous": False,
+    "extra_devices": [],
+}
+
 from virtual_microscope.backends.colony_counter.sim import ColonySim
-from virtual_microscope.engine.simulation_bridge import SimulationBridge
-import virtual_microscope.engine.simulation_bridge as bridge_module
-from pymmcore_plus.experimental.unicore import UniMMCore
 
 
 def create_sim(n_colonies=200, plate_type="spread", seed=42, distribution="random", staining=None, blue_fraction=0.3, colony_size_range=(3, 15), satellite_fraction=0.0, dynamic=False, growth_rate=0.1, max_colony_radius=20.0) -> ColonySim:
@@ -26,25 +30,17 @@ def create_sim(n_colonies=200, plate_type="spread", seed=42, distribution="rando
 
 def setup_colony_counter(n_colonies=200, plate_type="spread", seed=42, **kwargs):
     """Programmatic setup (no .cfg needed)."""
+    from virtual_microscope._init_standard import load_standalone
     from virtual_microscope.devices.state import GenericStateDevice
+
     sim = create_sim(n_colonies=n_colonies, plate_type=plate_type, seed=seed, **kwargs)
-    bridge_module.GLOBAL_BRIDGE = SimulationBridge(sim)
-    core = UniMMCore()
-    core.unloadAllDevices()
-    from virtual_microscope.devices.camera import SimCameraDevice
-    from virtual_microscope.devices.shutter import SimShutterDevice
-    core.loadPyDevice("Camera", SimCameraDevice())
-    core.loadPyDevice("Shutter", SimShutterDevice())
     labels = {0: "transmitted", 1: "blue-filter", 2: "GFP-excitation"}
-    core.loadPyDevice("Channel", GenericStateDevice("Channel", labels))
-    for dev in ("Camera", "Channel", "Shutter"):
-        core.initializeDevice(dev)
-    core.setCameraDevice("Camera")
-    core.setShutterDevice("Shutter")
-    core.setState("Channel", 0)
-    core.defineConfigGroup("Channel")
-    core.defineConfig("Channel", "plate-image", "Channel", "Label", "transmitted")
-    core.defineConfig("Channel", "blue-channel", "Channel", "Label", "blue-filter")
-    core.defineConfig("Channel", "gfp-channel", "Channel", "Label", "GFP-excitation")
-    core.setConfig("Channel", "plate-image")
+    core = load_standalone(sim,
+        channels={
+            "plate-image": ("Channel", "Label", "transmitted"),
+            "blue-channel": ("Channel", "Label", "blue-filter"),
+            "gfp-channel": ("Channel", "Label", "GFP-excitation"),
+        },
+        extra_devices={"Channel": GenericStateDevice("Channel", labels)},
+    )
     return core, sim

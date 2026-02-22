@@ -1,5 +1,12 @@
 """lipid_droplet backend for virtual-microscope (LipidDropletSim + lipid droplets)."""
 
+BACKEND_INFO = {
+    "description": "Simulates intracellular lipid droplets stained with BODIPY for hepatic steatosis studies. Features steatotic and normal cell populations with temperature and perfusion.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": True,
+    "extra_devices": ["Temperature", "Perfusion"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.lipid_droplet.sim import LipidDropletSim

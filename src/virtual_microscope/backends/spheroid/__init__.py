@@ -1,5 +1,12 @@
 """spheroid backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates a multicellular tumour spheroid cross-section with necrotic core and quiescent rim. Features Calcein-AM (live) and propidium-iodide (dead) viability staining.",
+    "channels": ["brightfield", "Calcein-AM", "propidium-iodide"],
+    "continuous": True,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.spheroid.sim import SpheroidSim

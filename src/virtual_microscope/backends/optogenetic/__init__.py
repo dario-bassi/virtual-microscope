@@ -1,5 +1,12 @@
 """optogenetic backend — vertex-based cells with SLM stimulation."""
 
+BACKEND_INFO = {
+    "description": "Simulates vertex-based cells with optogenetic SLM stimulation driving cell motility. Uses ScatteredCellSim with light-activated morphological responses.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": True,
+    "extra_devices": ["SLM"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.sims.cell.sim import ScatteredCellSim

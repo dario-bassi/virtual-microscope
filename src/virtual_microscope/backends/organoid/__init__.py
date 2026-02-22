@@ -1,5 +1,12 @@
 """organoid backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates a 3D organoid cross-section with lumen, wall cells, and optional budding. Features E-cadherin junctional staining and DAPI nuclear label.",
+    "channels": ["brightfield", "DAPI", "E-cadherin"],
+    "continuous": True,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.organoid.sim import OrganoidSim

@@ -1,5 +1,12 @@
 """plant_cell backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates rectangular plant cells with cell walls, chloroplasts, and vacuoles. Features iodine staining with DAPI and Calcofluor-White channels.",
+    "channels": ["iodine-stain", "DAPI", "Calcofluor-White"],
+    "continuous": True,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.plant_cell.sim import PlantCellSim

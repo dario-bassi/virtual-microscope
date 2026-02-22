@@ -1,5 +1,12 @@
 """bacteria backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates rod-shaped bacteria with growth and division dynamics. Supports SLM-based optogenetic stimulation and temperature control.",
+    "channels": ["phase-contrast", "GFP", "DAPI"],
+    "continuous": True,
+    "extra_devices": ["SLM", "Temperature"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.bacteria.sim import BacteriaSim

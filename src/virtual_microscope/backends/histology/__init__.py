@@ -1,5 +1,12 @@
 """histology backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates H&E-stained histology tissue sections with configurable tissue type and tumour grade. Supports separate hematoxylin and eosin pseudo-channels.",
+    "channels": ["H-and-E", "hematoxylin", "eosin"],
+    "continuous": False,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.histology.sim import HistologySim

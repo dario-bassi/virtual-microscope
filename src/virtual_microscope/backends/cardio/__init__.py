@@ -1,5 +1,12 @@
 """cardio backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates beating cardiomyocytes with calcium transients and arrhythmia. Supports SLM pacing, temperature control, and perfusion.",
+    "channels": ["phase-contrast", "GCaMP", "cell-junctions"],
+    "continuous": True,
+    "extra_devices": ["SLM", "Temperature", "Perfusion"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.cardio.sim import CardioSim

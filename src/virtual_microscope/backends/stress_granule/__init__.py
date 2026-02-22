@@ -1,5 +1,12 @@
 """stress_granule backend for virtual-microscope (StressGranuleSim + stress granules)."""
 
+BACKEND_INFO = {
+    "description": "Simulates stress granule formation and dissolution with G3BP1-GFP foci. Supports SLM stimulation, temperature, and perfusion for stress induction.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": True,
+    "extra_devices": ["SLM", "Temperature", "Perfusion"],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.stress_granule.sim import StressGranuleSim

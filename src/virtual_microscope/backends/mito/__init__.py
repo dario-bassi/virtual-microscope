@@ -1,5 +1,12 @@
 """mito backend for virtual-microscope."""
 
+BACKEND_INFO = {
+    "description": "Simulates mitochondrial networks with tubules undergoing fission and fusion. Features MitoTracker staining with configurable fragmentation dynamics.",
+    "channels": ["brightfield", "DAPI", "MitoTracker"],
+    "continuous": True,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.backends.mito.sim import MitoSim

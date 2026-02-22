@@ -1,5 +1,12 @@
 """voronoi backend for virtual-microscope (static VoronoiSim)."""
 
+BACKEND_INFO = {
+    "description": "Simulates a static Voronoi tessellation of an epithelial tissue monolayer. Provides phase-contrast, DAPI nuclear, and membrane channels.",
+    "channels": ["phase-contrast", "DAPI", "membrane"],
+    "continuous": False,
+    "extra_devices": [],
+}
+
 from pathlib import Path
 
 from virtual_microscope.sims.voronoi.voronoi import VoronoiSim

@@ -1,6 +1,5 @@
 # Optimized microscope simulation based on the nwe opto-loop implmentation
 import numpy as np
-import time
 from typing import Optional, List, Union, Literal, Sequence
 from virtual_microscope.base import SimBase
 from virtual_microscope.sims.cell.optogenetic import OptogeneticCell
@@ -18,6 +17,8 @@ import cv2
 class ScatteredCellSim(SimBase):
     """Optmized microscope simulation with modular cell types."""
 
+    continuous = True
+
     def __init__(self, width: int = 1500, height: int = 1500,
                  nb_cells: int = 240, cell_type: str = "optogenetic",
                  viewport_width: int = 512, viewport_height: int = 512,
@@ -27,6 +28,7 @@ class ScatteredCellSim(SimBase):
             width=width, height=height,
             viewport_width=viewport_width, viewport_height=viewport_height,
             seed=rng_seed, internal_scale=1,
+            fixed_dt=0.005,
             mode_map={
                 ("SCFP2(434/474)", "UV"): 1,           # DAPI
                 ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
@@ -43,7 +45,6 @@ class ScatteredCellSim(SimBase):
         self.renderer = CellCycleRenderer(viewport_width, viewport_height)
         self.spatial_grid = SpatialGrid(width, height, base_radius * 3)
 
-        self._last_time = time.perf_counter()
         # Legacy objectif_dict (no 100x for this sim)
         self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40}
 
@@ -189,9 +190,8 @@ class ScatteredCellSim(SimBase):
             self.nb_cells = n_cells
     
 
-    def update(self, dt: float = 0.016) -> None:
-        """Update simulation using BOTH fast physics AND cell objects."""
-        # Always use parallel physics
+    def step(self, dt: float = 0.005) -> None:
+        """Advance physics by *dt*.  Called by RealtimeEngine or manually."""
         update_all_cells_parallel(
             self.centers, self.velocities, self.radii, self.angles,
             self.base_radii, self.areas, self.width, self.height, dt
@@ -207,7 +207,7 @@ class ScatteredCellSim(SimBase):
 
         # Handle collisions
         self._handle_collisions_with_spatial_grid()
-        
+
         # Update cell cycle dynamics (divisions, apoptosis)
         # This modifies self._cells (adds/removes cells), so do it last
         if self.cycle_manager is not None:
@@ -215,6 +215,10 @@ class ScatteredCellSim(SimBase):
             # Resync numpy arrays after cell list changes
             # This protects against index misalignment by rebuilding arrays completely
             self._resync_arrays_after_division()
+
+    def update(self, dt: float = 0.016) -> None:
+        """Update simulation (legacy alias for step)."""
+        self.step(dt)
 
     def _handle_collisions_with_spatial_grid(self) -> None:
         """Use SpatialGrid for collision detection."""
@@ -279,22 +283,19 @@ class ScatteredCellSim(SimBase):
 
     
     def snap_frame(self, mask: Optional[np.ndarray] = None, intensity: float = 1.0, exposure = 1.0) -> np.ndarray:
-        """Capture a frame with option stimulation"""
-        # Update stimulation
-        now = time.perf_counter()
-        dt = (now - self._last_time) * 0.3 # scale time for smoother simulation, reduced for lower cell velocity
+        """Capture a frame with optional stimulation.
 
-        self._last_time = now
-        self.update(dt)
-        
+        Physics is handled by ``step()`` (driven by RealtimeEngine or called
+        manually).  ``snap_frame()`` only renders the current state and
+        optionally applies an SLM mask.
+        """
         # Apply optogentic stimulation if mask is provided
         if mask is not None and self.cell_type == "optogenetic":
             self.apply_optogenetic_stimulator(mask)
         elif mask is not None and self.cell_type == "drug":
-            if np.any(mask): # Only if mak has True values
+            if np.any(mask): # Only if mask has True values
                 self.apply_drug(self.concentration, self.drug_type)
 
-        
         # determine rendering mode from state devices
         self._update_mode()
 
@@ -331,8 +332,8 @@ class ScatteredCellSim(SimBase):
     def _update_objectif(self) -> None:
         """Update the objctiv used based on the state device."""
         if "Objective" not in self.state_devices:
-            raise ValueError("no state device for the objectif!")
-        
+            return  # keep current objective when no devices registered
+
         objectif_label = self.state_devices["Objective"]["label"]
 
         if objectif_label not in ("10x", "20x", "40x"):
@@ -385,4 +386,3 @@ class ScatteredCellSim(SimBase):
         """Reset simulation."""
         self._cells = self._create_cells()
         self._init_numpy_arrays()
-        self._last_time = time.perf_counter()

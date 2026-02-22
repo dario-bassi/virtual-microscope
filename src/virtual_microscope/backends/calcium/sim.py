@@ -66,7 +66,7 @@ class CalciumSim(SimBase):
         )
 
         self._scale = grid_size / self.SIM_SIZE  # 4x for 512
-        self.nb_cells = n_cells
+        self.n_cells = n_cells
         self._seed = seed
         self._noise_rng = np.random.default_rng(seed + 7777)
 
@@ -302,7 +302,7 @@ class CalciumSim(SimBase):
             self.centers = candidates[idx]
         else:
             self.centers = candidates[:n_cells]
-            self.nb_cells = len(self.centers)
+            self.n_cells = len(self.centers)
 
     def _build_voronoi(self):
         """Precompute Voronoi cell labels, boundaries, and nucleus mask."""
@@ -342,7 +342,7 @@ class CalciumSim(SimBase):
         # Nucleus mask: small oval per cell
         nuc_mask = np.zeros((h_i, w_i), dtype=np.float32)
         nuc_radius = 4.0  # world px
-        for ci in range(self.nb_cells):
+        for ci in range(self.n_cells):
             ncx = int(self.centers[ci, 0] * s)
             ncy = int(self.centers[ci, 1] * s)
             r = int((nuc_radius + self.rng.normal(0, 0.5)) * s)
@@ -375,7 +375,7 @@ class CalciumSim(SimBase):
         dx = xx_i[None, :] - cx_all[self._cell_labels]
         dist_map = np.sqrt(dy ** 2 + dx ** 2)
         # Approximate max distance per cell using cell spacing
-        avg_spacing = self.width * s / np.sqrt(self.nb_cells)
+        avg_spacing = self.width * s / np.sqrt(self.n_cells)
         norm_dist = np.clip(dist_map / (avg_spacing * 0.6), 0, 1)
         # Invert: 1.0 near center, 0.7 at boundary (thicker cytoplasm = more signal)
         self._cyto_gradient = (1.0 - 0.3 * norm_dist).astype(np.float32)
@@ -621,11 +621,11 @@ class CalciumSim(SimBase):
 
         # Calcium sparks: stochastic subcellular bright spots from ER release
         # ~2% of cells per frame; small ~2px radius, +60-100 counts above local
-        n_sparks = self._noise_rng.poisson(max(1, int(0.02 * self.nb_cells)))
+        n_sparks = self._noise_rng.poisson(max(1, int(0.02 * self.n_cells)))
         if n_sparks > 0:
             s = self.internal_scale
             r_cell = self.cell_radius  # scalar, same for all cells
-            spark_cells = self._noise_rng.choice(self.nb_cells, n_sparks)
+            spark_cells = self._noise_rng.choice(self.n_cells, n_sparks)
             for ci in spark_cells:
                 cx_w, cy_w = self.centers[ci]
                 # Random position within cell cytoplasm (avoid nucleus)

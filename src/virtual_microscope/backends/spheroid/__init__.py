@@ -18,7 +18,7 @@ def create_sim(radius=80, n_cells=2000, necrotic_fraction=0.45, quiescent_fracti
     )
 
 
-def setup_spheroid_microscope(radius=80, n_cells=2000, necrotic_fraction=0.45, quiescent_fraction=0.20, seed=42, internal_scale=4):
+def setup_spheroid(radius=80, n_cells=2000, necrotic_fraction=0.45, quiescent_fraction=0.20, seed=42, internal_scale=4):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(radius=radius, n_cells=n_cells, necrotic_fraction=necrotic_fraction, quiescent_fraction=quiescent_fraction, seed=seed, internal_scale=internal_scale)
     core = load_cfg(sim, Path(__file__).parent / "spheroid.cfg")

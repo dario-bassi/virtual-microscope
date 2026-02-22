@@ -54,7 +54,7 @@ class FishSim(DynamicVoronoiSim):
 
         renderable = getattr(self, '_renderable', None)
 
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             cx, cy = float(self.centers[i][0]), float(self.centers[i][1])
             nuc_r = (float(self.nucleus_radii[i])
                      if hasattr(self, 'nucleus_radii') else 20.0)

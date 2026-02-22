@@ -19,7 +19,7 @@ def create_sim(world_size=512, n_cells=200, seed=42, internal_scale=4, division_
     )
 
 
-def setup_yeast_microscope(world_size=512, n_cells=200, seed=42, internal_scale=4, division_time=15.0):
+def setup_yeast(world_size=512, n_cells=200, seed=42, internal_scale=4, division_time=15.0):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(world_size=world_size, n_cells=n_cells, seed=seed, internal_scale=internal_scale, division_time=division_time)
     core = load_cfg(sim, Path(__file__).parent / "yeast.cfg")

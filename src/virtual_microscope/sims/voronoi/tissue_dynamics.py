@@ -14,7 +14,7 @@ For N=200 cells, recomputation takes ~1ms. Acceptable for 10-50 frames.
 Usage:
     from tissue_dynamics import DynamicVoronoiSim
 
-    sim = DynamicVoronoiSim(width=1024, height=1024, nb_cells=200, ...)
+    sim = DynamicVoronoiSim(width=1024, height=1024, n_cells=200, ...)
     sim.create_wound(shape="rectangle", center=(512, 512), size=(200, 1024))
 
     for t in range(20):
@@ -71,13 +71,13 @@ class DynamicVoronoiSim(VoronoiSim):
         self.apoptosis_rate = apoptosis_rate
 
         # Cell state
-        self.alive = np.ones(self.nb_cells, dtype=bool)
-        self.velocities = np.zeros((self.nb_cells, 2))
+        self.alive = np.ones(self.n_cells, dtype=bool)
+        self.velocities = np.zeros((self.n_cells, 2))
         self.frame_count = 0
 
         # Apoptosis state: tracks dying cells through visible morphological stages
         # 0 = healthy, 1+ = apoptosis stage (higher = further along)
-        self.apoptosis_stage = np.zeros(self.nb_cells, dtype=int)
+        self.apoptosis_stage = np.zeros(self.n_cells, dtype=int)
         self.apoptosis_max_stage = 4  # stages before cell becomes ghost
         # Shrinkage factor per stage (1.0 = full size, 0.0 = vanished)
         self._apoptosis_shrink = np.array([1.0, 0.85, 0.65, 0.45, 0.0])
@@ -106,16 +106,16 @@ class DynamicVoronoiSim(VoronoiSim):
         self._gene_induction_rate = 0.0    # expression increase per step under SLM
         self._gene_induction_max = 1.0     # max expression level (0-1)
         self._gene_decay_rate = 0.0        # passive expression decay per step
-        self._gene_expression = np.zeros(self.nb_cells, dtype=float)  # per-cell
+        self._gene_expression = np.zeros(self.n_cells, dtype=float)  # per-cell
         self._gene_baseline = None         # baseline intensities before induction
-        self._cumulative_illumination = np.zeros(self.nb_cells, dtype=float)
+        self._cumulative_illumination = np.zeros(self.n_cells, dtype=float)
 
         # Ghost weight for wound healing: each ghost starts at weight 1.0
         # (full cell-sized gap). Weight decays over time, displacing the
         # ghost centroid toward its nearest alive neighbor. When weight → 0,
         # the ghost is removed entirely and the alive neighbor's Voronoi
         # polygon expands naturally. No new tiny cells are created.
-        self._ghost_weight = np.ones(self.nb_cells, dtype=float)
+        self._ghost_weight = np.ones(self.n_cells, dtype=float)
 
         self.exclude_ghosts_from_voronoi = False
 
@@ -123,18 +123,18 @@ class DynamicVoronoiSim(VoronoiSim):
         # a target cell count indefinitely. When enabled, the tissue
         # sustains interesting dynamics without growing or shrinking.
         self.homeostatic = False
-        self.target_cells = self.nb_cells  # target = initial count
+        self.target_cells = self.n_cells  # target = initial count
         self._homeostatic_base_div = 0.005  # base division rate when homeostatic
         self._homeostatic_base_apo = 0.005  # base apoptosis rate when homeostatic
 
         # Nuclear translocation: drug-induced protein shuttling (e.g. NF-kB)
         self._transloc_enabled = False
-        self._transloc_nuc_fraction = np.full(self.nb_cells, 0.2)  # 20% nuclear at rest
+        self._transloc_nuc_fraction = np.full(self.n_cells, 0.2)  # 20% nuclear at rest
         self._transloc_import_rate = 0.08   # nuclear import rate under drug
         self._transloc_export_rate = 0.03   # nuclear export rate (baseline re-export)
         self._transloc_baseline = 0.2       # resting nuclear fraction
         self._transloc_drug_active = False   # set by Perfusion device or manual flag
-        self._transloc_total_reporter = np.ones(self.nb_cells)  # total GFP per cell
+        self._transloc_total_reporter = np.ones(self.n_cells)  # total GFP per cell
         self._transloc_mode_id = None       # mode_id of extra GFP channel
 
         # Z-drift: tissue slowly moves out of focus during timelapse
@@ -167,7 +167,7 @@ class DynamicVoronoiSim(VoronoiSim):
     def _apply_fluorescence_dynamics(self):
         """Update fluorescence intensities based on dynamics functions."""
         if self._nuc_dynamics is not None:
-            for i in range(self.nb_cells):
+            for i in range(self.n_cells):
                 if not self.alive[i]:
                     continue
                 val = self._nuc_dynamics(i, self.frame_count)
@@ -175,7 +175,7 @@ class DynamicVoronoiSim(VoronoiSim):
                     self.nucleus_intensity[i] = np.clip(val, 0.0, 1.0)
 
         if self._mem_dynamics is not None:
-            for i in range(self.nb_cells):
+            for i in range(self.n_cells):
                 if not self.alive[i]:
                     continue
                 val = self._mem_dynamics(i, self.frame_count)
@@ -207,15 +207,15 @@ class DynamicVoronoiSim(VoronoiSim):
         self._gene_induction_max = max_expression
         self._gene_decay_rate = decay_rate
         self._gene_baseline = self.nucleus_intensity.copy()
-        self._gene_expression = np.zeros(self.nb_cells, dtype=float)
-        self._cumulative_illumination = np.zeros(self.nb_cells, dtype=float)
+        self._gene_expression = np.zeros(self.n_cells, dtype=float)
+        self._cumulative_illumination = np.zeros(self.n_cells, dtype=float)
 
     def _apply_gene_induction(self):
         """Update per-cell gene expression based on SLM illumination."""
         if not self._gene_induction_enabled:
             return
 
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
 
@@ -257,11 +257,11 @@ class DynamicVoronoiSim(VoronoiSim):
                 induced_cells: indices where expression > 0.1
         """
         alive_mask = self.alive[:len(self._gene_expression)]
-        expr = self._gene_expression[:self.nb_cells]
+        expr = self._gene_expression[:self.n_cells]
 
         illuminated = []
         if self._stim_mask is not None:
-            for i in range(self.nb_cells):
+            for i in range(self.n_cells):
                 if not self.alive[i]:
                     continue
                 px = int(np.clip(self.centers[i][0], 0, self.width - 1))
@@ -274,7 +274,7 @@ class DynamicVoronoiSim(VoronoiSim):
             "illuminated_cells": illuminated,
             "mean_expression": float(expr[alive_mask].mean()) if alive_mask.any() else 0.0,
             "induced_cells": list(np.where((expr > 0.1) & alive_mask)[0]),
-            "cumulative_illumination": self._cumulative_illumination[:self.nb_cells].copy(),
+            "cumulative_illumination": self._cumulative_illumination[:self.n_cells].copy(),
         }
 
     # ---- Photoconversion ----
@@ -297,8 +297,8 @@ class DynamicVoronoiSim(VoronoiSim):
         """
         self._photoconversion_enabled = True
         self._conversion_threshold = conversion_threshold
-        self._converted = np.zeros(self.nb_cells, dtype=bool)
-        self._conversion_exposure = np.zeros(self.nb_cells, dtype=int)
+        self._converted = np.zeros(self.n_cells, dtype=bool)
+        self._conversion_exposure = np.zeros(self.n_cells, dtype=int)
 
         # Set initial fluorescence: green-bright, red-dim
         self._pre_nuc = self.nucleus_intensity.copy()    # save green baseline
@@ -321,7 +321,7 @@ class DynamicVoronoiSim(VoronoiSim):
             return
 
         newly_converted = False
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i] or self._converted[i]:
                 continue
 
@@ -335,7 +335,7 @@ class DynamicVoronoiSim(VoronoiSim):
                     newly_converted = True
 
         # Update fluorescence for all cells
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             if self._converted[i]:
@@ -361,8 +361,8 @@ class DynamicVoronoiSim(VoronoiSim):
             return {"converted": np.array([]), "n_converted": 0,
                     "n_unconverted": 0, "converted_indices": []}
 
-        alive_mask = self.alive[:self.nb_cells]
-        conv = self._converted[:self.nb_cells]
+        alive_mask = self.alive[:self.n_cells]
+        conv = self._converted[:self.n_cells]
         n_conv = int((conv & alive_mask).sum())
         n_unconv = int((~conv & alive_mask).sum())
 
@@ -404,8 +404,8 @@ class DynamicVoronoiSim(VoronoiSim):
         self._ablation_threshold = kill_threshold
         self._ablation_damage_rate = damage_rate
         self._ablation_healing = healing_response
-        self._laser_damage = np.zeros(self.nb_cells, dtype=float)
-        self._ablated = np.zeros(self.nb_cells, dtype=bool)
+        self._laser_damage = np.zeros(self.n_cells, dtype=float)
+        self._ablated = np.zeros(self.n_cells, dtype=bool)
         self._ablation_center = None  # mean position of ablated cells
 
         # Ghost cells stay in tessellation — their regions render as empty
@@ -422,7 +422,7 @@ class DynamicVoronoiSim(VoronoiSim):
             return
 
         newly_killed = []
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i] or self._ablated[i]:
                 continue
 
@@ -450,7 +450,7 @@ class DynamicVoronoiSim(VoronoiSim):
         # Update wound region for directed migration
         if newly_killed or (self._ablation_center is not None
                             and self._ablation_healing):
-            ablated_idx = np.where(self._ablated[:self.nb_cells])[0]
+            ablated_idx = np.where(self._ablated[:self.n_cells])[0]
             if len(ablated_idx) > 0:
                 self._ablation_center = self.centers[ablated_idx].mean(axis=0)
 
@@ -479,9 +479,9 @@ class DynamicVoronoiSim(VoronoiSim):
             return {"n_ablated": 0, "n_damaged": 0, "n_alive": 0,
                     "ablated_indices": [], "ablation_center": None}
 
-        ablated = self._ablated[:self.nb_cells]
-        damage = self._laser_damage[:self.nb_cells]
-        alive_mask = self.alive[:self.nb_cells]
+        ablated = self._ablated[:self.n_cells]
+        damage = self._laser_damage[:self.n_cells]
+        alive_mask = self.alive[:self.n_cells]
 
         return {
             "n_ablated": int(ablated.sum()),
@@ -522,10 +522,10 @@ class DynamicVoronoiSim(VoronoiSim):
         self._transloc_import_rate = import_rate
         self._transloc_export_rate = export_rate
         self._transloc_baseline = baseline_nuc_fraction
-        self._transloc_nuc_fraction = np.full(self.nb_cells, baseline_nuc_fraction)
+        self._transloc_nuc_fraction = np.full(self.n_cells, baseline_nuc_fraction)
         # Per-cell total reporter with heterogeneity (some cells load more dye)
         self._transloc_total_reporter = np.clip(
-            1.0 + self.rng.normal(0, heterogeneity, self.nb_cells), 0.3, 1.7
+            1.0 + self.rng.normal(0, heterogeneity, self.n_cells), 0.3, 1.7
         )
 
     def enable_translocation_channel(self, core=None):
@@ -577,7 +577,7 @@ class DynamicVoronoiSim(VoronoiSim):
         """Update nuclear fraction based on drug state."""
         if not self._transloc_enabled:
             return
-        n = self.nb_cells
+        n = self.n_cells
         frac = self._transloc_nuc_fraction[:n]
         if self._transloc_drug_active:
             # Nuclear import: fraction increases toward 1.0
@@ -595,7 +595,7 @@ class DynamicVoronoiSim(VoronoiSim):
         """
         if not self._transloc_enabled:
             return {"enabled": False}
-        n = self.nb_cells
+        n = self.n_cells
         alive_mask = self.alive[:n]
         fracs = self._transloc_nuc_fraction[:n][alive_mask]
         return {
@@ -671,12 +671,12 @@ class DynamicVoronoiSim(VoronoiSim):
         cx, cy = center
 
         # Edge zone width: proportional to cell spacing for realistic irregularity
-        expected_spacing = np.sqrt(self.width * self.height / max(1, self.nb_cells))
+        expected_spacing = np.sqrt(self.width * self.height / max(1, self.n_cells))
         edge_zone = jagged * expected_spacing * 0.8
 
         # Determine which cells are in the wound
         wounded = []
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             px, py = self.centers[i]
@@ -880,11 +880,11 @@ class DynamicVoronoiSim(VoronoiSim):
         nearest alive neighbor (zero-area Voronoi region = effectively removed).
         No new tiny cells are created — existing cells grow to fill the gap.
         """
-        ghost_indices = np.where(~self.alive[:self.nb_cells])[0]
+        ghost_indices = np.where(~self.alive[:self.n_cells])[0]
         if len(ghost_indices) == 0:
             return
 
-        alive_indices = np.where(self.alive[:self.nb_cells])[0]
+        alive_indices = np.where(self.alive[:self.n_cells])[0]
         if len(alive_indices) == 0:
             return
 
@@ -933,7 +933,7 @@ class DynamicVoronoiSim(VoronoiSim):
         ``stim_speed_multiplier`` (default 2x). This simulates optogenetic
         acceleration of wound-edge cell migration.
         """
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
 
@@ -1041,7 +1041,7 @@ class DynamicVoronoiSim(VoronoiSim):
         px, py = self.centers[cell_idx]
         force = np.zeros(2)
 
-        for j in range(self.nb_cells):
+        for j in range(self.n_cells):
             if j == cell_idx or not self.alive[j]:
                 continue
             dx = px - self.centers[j][0]
@@ -1068,7 +1068,7 @@ class DynamicVoronoiSim(VoronoiSim):
         new_mem_int = []
         new_parent_idx = []
 
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
 
@@ -1135,7 +1135,7 @@ class DynamicVoronoiSim(VoronoiSim):
                 self._geminin_intensity = np.concatenate([
                     self._geminin_intensity,
                     np.full(n_new, gem_vals.get(0, 0.05))])
-            self.nb_cells += n_new
+            self.n_cells += n_new
 
     def _apoptose(self, dt: float):
         """Probabilistic cell death with visible stages.
@@ -1150,7 +1150,7 @@ class DynamicVoronoiSim(VoronoiSim):
         At each step, healthy cells may initiate apoptosis, and cells
         already dying advance one stage.
         """
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
 
@@ -1190,7 +1190,7 @@ class DynamicVoronoiSim(VoronoiSim):
 
         # Division with ghost recycling
         ghost_indices = list(np.where(~self.alive & ~self._renderable)[0])
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             if self.rng.random() < div_rate * dt:
@@ -1221,7 +1221,7 @@ class DynamicVoronoiSim(VoronoiSim):
                     self._divide_append_one(i, new_center)
 
         # Apoptosis (same as _apoptose but with adjusted rate)
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             if self.apoptosis_stage[i] > 0:
@@ -1280,7 +1280,7 @@ class DynamicVoronoiSim(VoronoiSim):
                 self._conversion_exposure, [0]])
         # Ghost weight
         self._ghost_weight = np.concatenate([self._ghost_weight, [1.0]])
-        self.nb_cells += 1
+        self.n_cells += 1
         # Extension hooks (FUCCI geminin propagation, etc.)
         for hook in self._divide_hooks:
             hook(parent_idx)
@@ -1426,7 +1426,7 @@ class DynamicVoronoiSim(VoronoiSim):
             dict with frame_count and per-cell state.
         """
         cells = []
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             cells.append({
                 "id": i,
                 "x": round(float(self.centers[i][0]), 1),
@@ -1481,7 +1481,7 @@ class DynamicVoronoiSim(VoronoiSim):
 
         # Find the closest alive cell to wound center
         dists = [np.hypot(self.centers[i][0] - cx, self.centers[i][1] - cy)
-                 for i in range(self.nb_cells) if self.alive[i]]
+                 for i in range(self.n_cells) if self.alive[i]]
 
         if not dists:
             return {"min_dist": float("inf"), "mean_dist": float("inf")}

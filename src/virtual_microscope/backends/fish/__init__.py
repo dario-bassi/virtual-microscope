@@ -9,12 +9,12 @@ from virtual_microscope._init_standard import load_cfg
 def create_sim(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, deleted_fraction=0.10, amplified_copies_range=(3, 6), width=512, height=512, internal_scale=4) -> FishSim:
     """Create a FishSim for FISH probe imaging."""
     return FishSim(
-        nb_cells=n_cells,
+        n_cells=n_cells,
         width=width,
         height=height,
         viewport_width=512,
         viewport_height=512,
-        rng_seed=seed,
+        seed=seed,
         jitter=0.6,
         nucleus_fraction=0.32,
         internal_scale=internal_scale,
@@ -22,7 +22,7 @@ def create_sim(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, del
     )
 
 
-def setup_fish_microscope(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, deleted_fraction=0.10, amplified_copies_range=(3, 6), **kwargs):
+def setup_fish(n_cells=40, seed=42, locus_copies=2, amplified_fraction=0.15, deleted_fraction=0.10, amplified_copies_range=(3, 6), **kwargs):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(n_cells=n_cells, seed=seed, locus_copies=locus_copies, amplified_fraction=amplified_fraction, deleted_fraction=deleted_fraction, amplified_copies_range=amplified_copies_range)
     core = load_cfg(sim, Path(__file__).parent / "fish.cfg")

@@ -26,7 +26,7 @@ def create_sim(world_size=512, n_rbc=2000, n_wbc=8, parasitemia=0.05,
     return sim
 
 
-def setup_malaria_microscope(world_size=512, n_rbc=2000, n_wbc=8, parasitemia=0.05,
+def setup_malaria(world_size=512, n_rbc=2000, n_wbc=8, parasitemia=0.05,
                              hours_per_step=2.0, n_platelets=0, applique_rate=0.35,
                              seed=42, internal_scale=4):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""

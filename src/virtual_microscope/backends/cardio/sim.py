@@ -70,7 +70,7 @@ class CardioSim(SimBase):
             },
         )
 
-        self.nb_cells = n_cells
+        self.n_cells = n_cells
         self._noise_rng = np.random.default_rng(seed + 7777)
         self._seed = seed
         self.normal_freq = normal_freq
@@ -229,7 +229,7 @@ class CardioSim(SimBase):
             self.centers = candidates[idx]
         else:
             self.centers = candidates[:n_cells]
-            self.nb_cells = len(self.centers)
+            self.n_cells = len(self.centers)
 
     def _build_voronoi(self):
         """Precompute Voronoi cell labels and sarcomere texture.
@@ -289,7 +289,7 @@ class CardioSim(SimBase):
         # CM nuclei: ~10 µm diameter, slightly offset from cell centroid
         nuc_mask = np.zeros((h_i, w_i), dtype=np.float32)
         nuc_radius_world = 4.0  # world px ≈ 4 µm radius
-        for ci in range(self.nb_cells):
+        for ci in range(self.n_cells):
             cx_i = int(self.centers[ci, 0] * s)
             cy_i = int(self.centers[ci, 1] * s)
             r = int((nuc_radius_world + self.rng.normal(0, 0.5)) * s)
@@ -299,7 +299,7 @@ class CardioSim(SimBase):
 
         # Precompute sarcomere striation texture (visible at 40x)
         # Per-cell myofibril orientation (random, 0..π)
-        self._cell_orientation = self.rng.uniform(0, np.pi, self.nb_cells)
+        self._cell_orientation = self.rng.uniform(0, np.pi, self.n_cells)
         orient_map = self._cell_orientation[self._cell_labels]
         yy, xx = np.mgrid[:h_i, :w_i]
         # Sarcomere period ≈ 2 µm ≈ 2.5 world px ≈ 10 internal px
@@ -332,7 +332,7 @@ class CardioSim(SimBase):
     @property
     def omega(self):
         """Backwards compat: frequency array (same as pacemaker freq)."""
-        freqs = np.full(self.nb_cells, 2 * np.pi * self.get_pacemaker_freq())
+        freqs = np.full(self.n_cells, 2 * np.pi * self.get_pacemaker_freq())
         freqs[self._is_arrhythmic] = 2 * np.pi * self.get_ectopic_freq()
         return freqs
 
@@ -459,10 +459,10 @@ class CardioSim(SimBase):
 
     def _get_stimulated_cells(self) -> np.ndarray:
         """Check which cells are under SLM illumination."""
-        stimulated = np.zeros(self.nb_cells, dtype=bool)
+        stimulated = np.zeros(self.n_cells, dtype=bool)
         if self._stim_mask is None:
             return stimulated
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             gx = self._cell_pde_x[i]
             gy = self._cell_pde_y[i]
             if self._stim_mask[gy, gx]:
@@ -755,7 +755,7 @@ class CardioSim(SimBase):
         elif group == "arrhythmic":
             idx = self._is_arrhythmic
         else:
-            idx = np.ones(self.nb_cells, dtype=bool)
+            idx = np.ones(self.n_cells, dtype=bool)
         return round(float(self._cell_intensities[idx].mean()), 4)
 
     def get_active_fraction(self, threshold: float = 0.3) -> float:
@@ -789,7 +789,7 @@ class CardioSim(SimBase):
         elif group == "arrhythmic":
             idx = self._is_arrhythmic
         else:
-            idx = np.ones(self.nb_cells, dtype=bool)
+            idx = np.ones(self.n_cells, dtype=bool)
         phases = self._cell_intensities[idx] * 2 * np.pi
         z = np.exp(1j * phases)
         return round(float(abs(z.mean())), 4)
@@ -802,7 +802,7 @@ class CardioSim(SimBase):
 
     def get_ground_truth(self) -> dict:
         gt = {
-            "n_cells": self.nb_cells,
+            "n_cells": self.n_cells,
             "order_parameter": self.get_order_parameter(),
             "normal_R": self.get_group_order("normal"),
             "arrhythmic_R": self.get_group_order("arrhythmic"),

@@ -20,14 +20,14 @@ class ScatteredCellSim(SimBase):
     continuous = True
 
     def __init__(self, width: int = 1500, height: int = 1500,
-                 nb_cells: int = 240, cell_type: str = "optogenetic",
+                 n_cells: int = 240, cell_type: str = "optogenetic",
                  viewport_width: int = 512, viewport_height: int = 512,
-                 base_radius: float = 20.0, rng_seed: int = 0,
+                 base_radius: float = 20.0, seed: int = 0,
                  cell_mix: Optional[dict] = None, concentration: float = 0.01, drug_type: Literal["growth", "mobility", "apoptosis"] = "growth"):
         super().__init__(
             width=width, height=height,
             viewport_width=viewport_width, viewport_height=viewport_height,
-            seed=rng_seed, internal_scale=1,
+            seed=seed, internal_scale=1,
             fixed_dt=0.005,
             mode_map={
                 ("SCFP2(434/474)", "UV"): 1,           # DAPI
@@ -35,7 +35,7 @@ class ScatteredCellSim(SimBase):
             },
         )
 
-        self.nb_cells = nb_cells
+        self.n_cells = n_cells
         self.base_radius = base_radius
         self.cell_type = cell_type
         self.cell_mix = cell_mix
@@ -45,24 +45,21 @@ class ScatteredCellSim(SimBase):
         self.renderer = CellCycleRenderer(viewport_width, viewport_height)
         self.spatial_grid = SpatialGrid(width, height, base_radius * 3)
 
-        # Legacy objectif_dict (no 100x for this sim)
-        self._objectif_dict = {"10x": 10, "20x": 20, "40x": 40}
-
         # Per-channel optical pipelines (noise, PSF, vignette)
         self._pipeline = {
             0: OpticalPipeline(
                 psf_sigma=0.4, noise={"photon_scale": 8.0, "read_std": 2.0},
-                vignette=0.08, rng_seed=rng_seed + 300),
+                vignette=0.08, rng_seed=seed + 300),
             1: OpticalPipeline(
                 psf_sigma=0.6, noise={"photon_scale": 5.0, "read_std": 2.5},
-                vignette=0.10, rng_seed=rng_seed + 301),
+                vignette=0.10, rng_seed=seed + 301),
             2: OpticalPipeline(
                 psf_sigma=0.6, noise={"photon_scale": 5.0, "read_std": 2.5},
-                vignette=0.10, rng_seed=rng_seed + 302),
+                vignette=0.10, rng_seed=seed + 302),
         }
 
         # Initialize cells based on type
-        self._rng = np.random.RandomState(rng_seed)
+        self._rng = np.random.RandomState(seed)
 
         # Create cell objects
         self._cells = self._create_cells()
@@ -79,7 +76,7 @@ class ScatteredCellSim(SimBase):
         cells = []
         if self.cell_mix is None:
 
-            for i in range(self.nb_cells):
+            for i in range(self.n_cells):
                 seed = self._rng.randint(0, 10000)
 
                 if self.cell_type == "optogenetic":
@@ -137,17 +134,17 @@ class ScatteredCellSim(SimBase):
             
             # Shuffle cells for random positioning
             self._rng.shuffle(cells)
-            #self.nb_cells = len(cells)
+            #self.n_cells = len(cells)
 
         return cells
     
     def _init_numpy_arrays(self):
         """Initialize numpy arrays from cell objects for fast physics."""
-        self.centers = np.zeros((self.nb_cells, 2), dtype=np.float64)
-        self.velocities = np.zeros((self.nb_cells, 2), dtype=np.float64)
-        self.radii = np.zeros((self.nb_cells, 24), dtype=np.float64)
-        self.base_radii = np.zeros(self.nb_cells, dtype=np.float64)
-        self.areas = np.zeros(self.nb_cells, dtype=np.float64)
+        self.centers = np.zeros((self.n_cells, 2), dtype=np.float64)
+        self.velocities = np.zeros((self.n_cells, 2), dtype=np.float64)
+        self.radii = np.zeros((self.n_cells, 24), dtype=np.float64)
+        self.base_radii = np.zeros(self.n_cells, dtype=np.float64)
+        self.areas = np.zeros(self.n_cells, dtype=np.float64)
         self.angles = np.linspace(0, 2 * np.pi, 24, endpoint=False)
         
         # Copy data from cell objects to arrays
@@ -187,7 +184,7 @@ class ScatteredCellSim(SimBase):
                 self.areas[i] = cell.area0
             
             # Update tracking variable
-            self.nb_cells = n_cells
+            self.n_cells = n_cells
     
 
     def step(self, dt: float = 0.005) -> None:
@@ -215,10 +212,6 @@ class ScatteredCellSim(SimBase):
             # Resync numpy arrays after cell list changes
             # This protects against index misalignment by rebuilding arrays completely
             self._resync_arrays_after_division()
-
-    def update(self, dt: float = 0.016) -> None:
-        """Update simulation (legacy alias for step)."""
-        self.step(dt)
 
     def _handle_collisions_with_spatial_grid(self) -> None:
         """Use SpatialGrid for collision detection."""
@@ -329,28 +322,9 @@ class ScatteredCellSim(SimBase):
         return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 
-    def _update_objectif(self) -> None:
-        """Update the objctiv used based on the state device."""
-        if "Objective" not in self.state_devices:
-            return  # keep current objective when no devices registered
-
-        objectif_label = self.state_devices["Objective"]["label"]
-
-        if objectif_label not in ("10x", "20x", "40x"):
-            raise ValueError("Objective must be 10x, 20x, 40x")
-
-        self.current_objectiv = self._objectif_dict[objectif_label]
-
-        # Update rendered object
-        # dof -> depth of field
-        if self.current_objectiv == 10: # 10x
-            dof = 6.0
-        elif self.current_objectiv == 20: # 20x
-            dof = 4.0
-        else: # 40x
-            dof = 1.5
-
-        self.renderer.set_objective(self.current_objectiv, dof)
+    def _on_objective_changed(self, mag: int, dof: float) -> None:
+        """Forward objective changes to the cell renderer."""
+        self.renderer.set_objective(mag, dof)
             
 
     def _update_cell_fluorescence(self, cell: CellBase, mode: int) -> None:

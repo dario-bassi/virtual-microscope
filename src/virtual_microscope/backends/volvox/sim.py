@@ -93,7 +93,7 @@ class VolvoxSim(SimBase):
         self.colony_radius = colony_radius
         self._ivw = viewport_width * internal_scale   # internal viewport width
         self._ivh = viewport_height * internal_scale   # internal viewport height
-        self.rng_seed = seed
+        self.seed = seed
 
         # Colony state
         self.colony_pos = np.array([
@@ -527,7 +527,7 @@ class VolvoxSim(SimBase):
             roi[:, :, c] = np.clip(ch, 0, 255).astype(np.uint8)
 
         # ECM gel texture: faint noise inside colony
-        tex_rng = np.random.default_rng(self.rng_seed + 7777)
+        tex_rng = np.random.default_rng(self.seed + 7777)
         tex = tex_rng.normal(0, 1.5, (y1 - y0, x1 - x0)).astype(np.float32)
         for c in range(3):
             ch = roi[:, :, c].astype(np.float32)

@@ -9,12 +9,12 @@ from virtual_microscope._init_standard import load_cfg
 def create_sim(n_cells=60, seed=42, live_fraction=0.85, width=512, height=512, internal_scale=4) -> ViabilitySim:
     """Create a ViabilitySim for viability staining."""
     return ViabilitySim(
-        nb_cells=n_cells,
+        n_cells=n_cells,
         width=width,
         height=height,
         viewport_width=512,
         viewport_height=512,
-        rng_seed=seed,
+        seed=seed,
         jitter=0.7,
         nucleus_fraction=0.3,
         internal_scale=internal_scale,
@@ -22,7 +22,7 @@ def create_sim(n_cells=60, seed=42, live_fraction=0.85, width=512, height=512, i
     )
 
 
-def setup_viability_microscope(n_cells=60, seed=42, live_fraction=0.85, **kwargs):
+def setup_viability(n_cells=60, seed=42, live_fraction=0.85, **kwargs):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(n_cells=n_cells, seed=seed, live_fraction=live_fraction)
     core = load_cfg(sim, Path(__file__).parent / "viability.cfg")

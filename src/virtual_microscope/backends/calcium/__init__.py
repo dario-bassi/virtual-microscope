@@ -22,7 +22,7 @@ def create_sim(grid_size=512, n_sources=-1, n_cells=200, steps_per_snap=1000, se
     return sim
 
 
-def setup_calcium_microscope(grid_size=512, n_sources=-1, n_cells=200, steps_per_snap=1000, seed=42, internal_scale=4, Du=5.0):
+def setup_calcium(grid_size=512, n_sources=-1, n_cells=200, steps_per_snap=1000, seed=42, internal_scale=4, Du=5.0):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(grid_size=grid_size, n_sources=n_sources, n_cells=n_cells, steps_per_snap=steps_per_snap, seed=seed, internal_scale=internal_scale, Du=Du)
     core = load_cfg(sim, Path(__file__).parent / "calcium.cfg")

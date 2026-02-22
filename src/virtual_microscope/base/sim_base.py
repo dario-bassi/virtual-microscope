@@ -135,8 +135,14 @@ class SimBase(ABC):
         obj = self.state_devices["Objective"]
         lbl = obj.get("Label", obj.get("label", ""))
         if lbl in self._objectif_dict:
-            self.current_objectiv = self._objectif_dict[lbl]
-            self._dof = self._dof_table.get(self.current_objectiv, 6.0)
+            mag = self._objectif_dict[lbl]
+            dof = self._dof_table.get(mag, 6.0)
+            self.current_objectiv = mag
+            self._dof = dof
+            self._on_objective_changed(mag, dof)
+
+    def _on_objective_changed(self, mag: int, dof: float):
+        """Hook called when the objective changes. Override in subclasses."""
 
     def set_focal_plane(self, z: float):
         """Set focal plane position (µm)."""
@@ -296,10 +302,6 @@ class SimBase(ABC):
         """Reset simulation state."""
         if seed is not None:
             self.rng = np.random.default_rng(seed)
-
-    def update(self, dt: float = 0.016):
-        """Update simulation (alias for step)."""
-        self.step(dt)
 
     def get_ground_truth(self) -> dict:
         """Return ground truth data.  Override in subclasses."""

@@ -9,12 +9,12 @@ from virtual_microscope._init_standard import load_cfg
 def create_sim(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=0.3, width=512, height=512, internal_scale=4, **kwargs) -> LysosomeSim:
     """Create a LysosomeSim for lysosome imaging."""
     return LysosomeSim(
-        nb_cells=n_cells,
+        n_cells=n_cells,
         width=width,
         height=height,
         viewport_width=512,
         viewport_height=512,
-        rng_seed=seed,
+        seed=seed,
         jitter=0.7,
         nucleus_fraction=0.3,
         internal_scale=internal_scale,
@@ -22,7 +22,7 @@ def create_sim(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=
     )
 
 
-def setup_lysosome_microscope(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=0.3, **kwargs):
+def setup_lysosome(n_cells=20, seed=42, n_lyso_min=5, n_lyso_max=20, diffusion_rate=0.3, **kwargs):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(n_cells=n_cells, seed=seed, n_lyso_min=n_lyso_min, n_lyso_max=n_lyso_max, diffusion_rate=diffusion_rate)
     core = load_cfg(sim, Path(__file__).parent / "lysosome.cfg")

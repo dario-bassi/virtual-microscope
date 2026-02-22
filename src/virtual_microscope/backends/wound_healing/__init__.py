@@ -9,12 +9,12 @@ from virtual_microscope._init_standard import load_cfg
 def create_sim(n_cells=100, seed=42, wound_width=120, migration_speed=2.0, width=512, height=512, internal_scale=4) -> DynamicVoronoiSim:
     """Create a DynamicVoronoiSim for wound healing assay."""
     sim = DynamicVoronoiSim(
-        nb_cells=n_cells,
+        n_cells=n_cells,
         width=width,
         height=height,
         viewport_width=512,
         viewport_height=512,
-        rng_seed=seed,
+        seed=seed,
         jitter=0.7,
         nucleus_fraction=0.3,
         internal_scale=internal_scale,
@@ -23,7 +23,7 @@ def create_sim(n_cells=100, seed=42, wound_width=120, migration_speed=2.0, width
     return sim
 
 
-def setup_wound_healing_microscope(n_cells=100, seed=42, wound_width=120, migration_speed=2.0, **kwargs):
+def setup_wound_healing(n_cells=100, seed=42, wound_width=120, migration_speed=2.0, **kwargs):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(n_cells=n_cells, seed=seed, wound_width=wound_width, migration_speed=migration_speed)
     core = load_cfg(sim, Path(__file__).parent / "wound_healing.cfg")

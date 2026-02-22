@@ -43,7 +43,7 @@ class ViabilitySim(DynamicVoronoiSim):
         rng = np.random.default_rng(rng_seed) if rng_seed is not None else self.rng
 
         # Randomly assign dead/live status
-        n_cells = self.nb_cells
+        n_cells = self.n_cells
         renderable_cells = [i for i in range(n_cells) if
                             (self._renderable[i] if hasattr(self, '_renderable') else True)]
         n_renderable = len(renderable_cells)
@@ -122,7 +122,7 @@ class ViabilitySim(DynamicVoronoiSim):
         calcein_dim = calcein_bright * self._calcein_dead_fraction
 
         # Draw filled circles per cell (approximates Voronoi territory)
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not (self._renderable[i] if hasattr(self, '_renderable') else True):
                 continue
             intensity = float(calcein_dim if i in dead_set else calcein_bright)
@@ -173,7 +173,7 @@ class ViabilitySim(DynamicVoronoiSim):
         pi_intensity = float(self._pi_intensity)
 
         for i in dead_set:
-            if i >= self.nb_cells:
+            if i >= self.n_cells:
                 continue
             cx = int(round(float(self.centers[i][0]) * s))
             cy = int(round(float(self.centers[i][1]) * s))
@@ -210,7 +210,7 @@ class ViabilitySim(DynamicVoronoiSim):
 
         dead_set = self._viab_dead_set
         n_dead = len(dead_set)
-        n_alive = self.nb_cells - n_dead
+        n_alive = self.n_cells - n_dead
 
         dead_positions = []
         for i in sorted(dead_set):

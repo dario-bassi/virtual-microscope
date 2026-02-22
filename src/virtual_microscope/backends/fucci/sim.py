@@ -51,11 +51,11 @@ class FucciSim(DynamicVoronoiSim):
         self._fucci_phase_names = {0: "G1", 1: "S", 2: "G2", 3: "M"}
 
         # Per-cell phase state
-        self._fucci_phase = np.zeros(self.nb_cells, dtype=int)  # 0=G1,1=S,2=G2,3=M
-        self._fucci_timer = np.zeros(self.nb_cells, dtype=float)  # time in current phase
+        self._fucci_phase = np.zeros(self.n_cells, dtype=int)  # 0=G1,1=S,2=G2,3=M
+        self._fucci_timer = np.zeros(self.n_cells, dtype=float)  # time in current phase
 
         # Randomize starting phase so cells aren't synchronized
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             t = self.rng.integers(0, total_cycle)
@@ -105,7 +105,7 @@ class FucciSim(DynamicVoronoiSim):
         # Avoids S/G2 boundary confusion caused by smooth membrane_intensity
         # G1=0.05, S=0.25, G2=0.85, M=0.95 — clear gap at threshold ~0.65
         self._fucci_geminin_intensity_values = {0: 0.05, 1: 0.25, 2: 0.85, 3: 0.95}
-        self._geminin_intensity = np.full(self.nb_cells, 0.05, dtype=float)
+        self._geminin_intensity = np.full(self.n_cells, 0.05, dtype=float)
 
         # Apply initial intensities
         self._apply_fucci_intensities()
@@ -165,7 +165,7 @@ class FucciSim(DynamicVoronoiSim):
 
         arrest_phase = getattr(self, '_fucci_arrest_phase', None)
 
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             phase = self._fucci_phase[i]
@@ -215,7 +215,7 @@ class FucciSim(DynamicVoronoiSim):
 
         divisions = []  # (parent_idx,) for cells that complete M phase
 
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             if self.apoptosis_stage[i] > 0:
@@ -294,9 +294,9 @@ class FucciSim(DynamicVoronoiSim):
         if not getattr(self, '_fucci_enabled', False):
             return {"error": "FUCCI not enabled"}
 
-        alive_mask = self.alive[:self.nb_cells]
-        phases = self._fucci_phase[:self.nb_cells]
-        timers = self._fucci_timer[:self.nb_cells]
+        alive_mask = self.alive[:self.n_cells]
+        phases = self._fucci_phase[:self.n_cells]
+        timers = self._fucci_timer[:self.n_cells]
 
         phase_counts = {}
         for phase_idx, name in self._fucci_phase_names.items():

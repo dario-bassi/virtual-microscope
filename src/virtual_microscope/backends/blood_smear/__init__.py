@@ -24,7 +24,7 @@ def create_sim(world_size=512, n_rbc=800, n_wbc=15, n_platelets=25,
     )
 
 
-def setup_blood_smear_microscope(world_size=512, n_rbc=800, n_wbc=15,
+def setup_blood_smear(world_size=512, n_rbc=800, n_wbc=15,
                                  n_platelets=25, abnormal_rbc=None,
                                  rouleaux_fraction=0.0,
                                  seed=42, internal_scale=4):

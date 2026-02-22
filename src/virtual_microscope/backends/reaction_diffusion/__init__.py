@@ -20,12 +20,9 @@ def create_sim(grid_size=512, preset="waves", F=None, K=None, steps_per_snap=200
     )
 
 
-def setup_rd_microscope(grid_size=512, preset="waves", F=None, K=None, steps_per_snap=200, seed=42):
+def setup_reaction_diffusion(grid_size=512, preset="waves", F=None, K=None, steps_per_snap=200, seed=42):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(grid_size=grid_size, preset=preset, F=F, K=K, steps_per_snap=steps_per_snap, seed=seed)
     core = load_cfg(sim, Path(__file__).parent / "reaction_diffusion.cfg")
     return core, sim
 
-
-# Alias for load_backend("reaction_diffusion") compatibility
-setup_reaction_diffusion_microscope = setup_rd_microscope

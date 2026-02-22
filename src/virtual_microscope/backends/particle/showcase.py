@@ -12,7 +12,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     """Return 4 visually compelling 512x512 RGB images of the particle backend."""
     from virtual_microscope.backends.particle import create_sim
 
-    sim = create_sim(nb_cells=50, rng_seed=seed)
+    sim = create_sim(n_cells=50, seed=seed)
     sim.auto_step = False
 
     bf = snap_channel(sim, mode=0, exposure=50.0)

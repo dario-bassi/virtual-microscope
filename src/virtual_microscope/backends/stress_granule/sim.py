@@ -58,12 +58,12 @@ class StressGranuleSim(DynamicVoronoiSim):
         self._sg_intensity_std = intensity_std
 
         # Per-cell stress sensitivity (heterogeneity in SG response)
-        raw_sens = 1.0 + rng.normal(0, heterogeneity, self.nb_cells)
+        raw_sens = 1.0 + rng.normal(0, heterogeneity, self.n_cells)
         self._sg_sensitivity = np.clip(raw_sens, 0.2, 1.8).astype(np.float32)
 
         # Initialise foci (list-of-lists)
         self._sg_cells = []
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             cell_foci = []
             if baseline_foci > 0:
                 for _ in range(baseline_foci):
@@ -141,7 +141,7 @@ class StressGranuleSim(DynamicVoronoiSim):
         rng = self.rng
         changed = False
 
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             foci = self._sg_cells[i]
@@ -188,7 +188,7 @@ class StressGranuleSim(DynamicVoronoiSim):
         nuc_level = 12.0
 
         # Paint each alive cell's cytoplasm dim and nucleus very dim
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
             cx_i = int(round(float(self.centers[i][0]) * s))
@@ -234,7 +234,7 @@ class StressGranuleSim(DynamicVoronoiSim):
         """
         if not hasattr(self, '_sg_cells'):
             return {"enabled": False}
-        counts = [len(self._sg_cells[i]) for i in range(self.nb_cells)
+        counts = [len(self._sg_cells[i]) for i in range(self.n_cells)
                   if self.alive[i]]
         n_stressed = sum(1 for c in counts if c >= 3)
         return {

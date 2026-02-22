@@ -11,7 +11,7 @@ def create_sim(n_total=10000, events_per_snap=100, seed=42) -> FlowCytometrySim:
     return FlowCytometrySim(n_total=n_total, events_per_snap=events_per_snap, seed=seed)
 
 
-def setup_flow_cytometry_microscope(n_total=10000, events_per_snap=100, seed=42):
+def setup_flow_cytometry(n_total=10000, events_per_snap=100, seed=42):
     """Programmatic setup (no .cfg needed)."""
     from virtual_microscope.devices.state import GenericStateDevice, ObjectiveDevice
     sim = create_sim(n_total=n_total, events_per_snap=events_per_snap, seed=seed)

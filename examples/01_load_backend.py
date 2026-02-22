@@ -1,21 +1,21 @@
 """Example: Load a backend programmatically and take a snapshot."""
 
-from virtual_microscope import setup_bacteria_microscope, list_backends
+from virtual_microscope import setup_bacteria, list_backends
 
 # Show all available backends
 print("Available backends:", list_backends())
 
 # Set up the bacteria microscope
-core, sim = setup_bacteria_microscope(n_cells=30, seed=42)
+core, sim = setup_bacteria(n_cells=30, seed=42)
 
 # Take a snapshot in brightfield
-core.setConfig("Fake", "brightfield")
+core.setConfig("Channel", "brightfield")
 core.snapImage()
 img = core.getImage()
 print(f"Brightfield image: {img.shape}, dtype={img.dtype}, range=[{img.min()}, {img.max()}]")
 
 # Switch to fluorescence and snap
-core.setConfig("Fake", "nucleus-channel")
+core.setConfig("Channel", "nucleus-channel")
 core.snapImage()
 img_fl = core.getImage()
 print(f"Fluorescence image: {img_fl.shape}, dtype={img_fl.dtype}")

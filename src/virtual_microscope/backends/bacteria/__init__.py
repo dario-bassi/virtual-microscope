@@ -18,7 +18,7 @@ def create_sim(n_cells=30, seed=42, world_size=512, internal_scale=4) -> Bacteri
     )
 
 
-def setup_bacteria_microscope(n_cells=30, seed=42, world_size=512, internal_scale=4):
+def setup_bacteria(n_cells=30, seed=42, world_size=512, internal_scale=4):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(n_cells=n_cells, seed=seed, world_size=world_size, internal_scale=internal_scale)
     core = load_cfg(sim, Path(__file__).parent / "bacteria.cfg")

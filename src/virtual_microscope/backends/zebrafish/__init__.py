@@ -11,7 +11,7 @@ def create_sim(n_rbc=30, cardiac_freq=2.5, seed=42, internal_scale=2) -> Zebrafi
     return ZebrafishSim(n_rbc=n_rbc, cardiac_freq=cardiac_freq, seed=seed, internal_scale=internal_scale)
 
 
-def setup_zebrafish_microscope(n_rbc=30, cardiac_freq=2.5, seed=42, internal_scale=2):
+def setup_zebrafish(n_rbc=30, cardiac_freq=2.5, seed=42, internal_scale=2):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(n_rbc=n_rbc, cardiac_freq=cardiac_freq, seed=seed, internal_scale=internal_scale)
     core = load_cfg(sim, Path(__file__).parent / "zebrafish.cfg")

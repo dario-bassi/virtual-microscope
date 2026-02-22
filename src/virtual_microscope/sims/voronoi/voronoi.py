@@ -32,12 +32,12 @@ class VoronoiSim(SimBase):
         self,
         width: int = 1024,
         height: int = 1024,
-        nb_cells: int = 200,
+        n_cells: int = 200,
         cell_type: str = "voronoi",
         viewport_width: int = 512,
         viewport_height: int = 512,
         base_radius: float = 20.0,
-        rng_seed: int = 42,
+        seed: int = 42,
         jitter: float = 0.7,
         nucleus_fraction: float = 0.3,
         textured_nuclei: bool = False,
@@ -48,17 +48,17 @@ class VoronoiSim(SimBase):
         super().__init__(
             width=width, height=height,
             viewport_width=viewport_width, viewport_height=viewport_height,
-            seed=rng_seed, internal_scale=internal_scale,
+            seed=seed, internal_scale=internal_scale,
             mode_map={
                 ("SCFP2(434/474)", "UV"): 1,           # DAPI
                 ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
             },
         )
 
-        self.nb_cells = nb_cells
+        self.n_cells = n_cells
         self.cell_type = cell_type
         self.base_radius = base_radius
-        self.rng_seed = rng_seed
+        self.seed = seed
         self.textured_nuclei = textured_nuclei
         self.membrane_ruffle = membrane_ruffle
         self._last_time = time.perf_counter()
@@ -75,37 +75,37 @@ class VoronoiSim(SimBase):
         self._compute_ruffled_polygons()
 
         # Per-cell marker flags
-        self.has_nucleus_marker = np.ones(self.nb_cells, dtype=bool)
-        self.has_membrane_marker = np.ones(self.nb_cells, dtype=bool)
-        self.has_cytoplasm_marker = np.zeros(self.nb_cells, dtype=bool)
-        self.nucleus_intensity = self.rng.uniform(0.7, 1.0, self.nb_cells)
-        self.membrane_intensity = self.rng.uniform(0.6, 0.9, self.nb_cells)
-        self.cytoplasm_intensity = np.zeros(self.nb_cells, dtype=float)
-        self.cell_gray = self.rng.uniform(100, 155, self.nb_cells).astype(np.uint8)
+        self.has_nucleus_marker = np.ones(self.n_cells, dtype=bool)
+        self.has_membrane_marker = np.ones(self.n_cells, dtype=bool)
+        self.has_cytoplasm_marker = np.zeros(self.n_cells, dtype=bool)
+        self.nucleus_intensity = self.rng.uniform(0.7, 1.0, self.n_cells)
+        self.membrane_intensity = self.rng.uniform(0.6, 0.9, self.n_cells)
+        self.cytoplasm_intensity = np.zeros(self.n_cells, dtype=float)
+        self.cell_gray = self.rng.uniform(100, 155, self.n_cells).astype(np.uint8)
 
         # Per-cell nucleus morphology (stable across recomputes)
         # Offset: fraction of nucleus_radii in random direction
-        self._nuc_offset_frac = self.rng.uniform(0.0, 0.3, self.nb_cells)
-        self._nuc_offset_angle = self.rng.uniform(0, 2 * np.pi, self.nb_cells)
+        self._nuc_offset_frac = self.rng.uniform(0.0, 0.3, self.n_cells)
+        self._nuc_offset_angle = self.rng.uniform(0, 2 * np.pi, self.n_cells)
         # Ellipticity: axis ratio and orientation
-        self._nuc_aspect = self.rng.uniform(1.0, 1.3, self.nb_cells)
-        self._nuc_orient = self.rng.uniform(0, np.pi, self.nb_cells)
+        self._nuc_aspect = self.rng.uniform(1.0, 1.3, self.n_cells)
+        self._nuc_orient = self.rng.uniform(0, np.pi, self.n_cells)
 
         # Per-cell render visibility (False = ghost cell, skipped in all channels)
-        self._renderable = np.ones(self.nb_cells, dtype=bool)
+        self._renderable = np.ones(self.n_cells, dtype=bool)
 
         # Optical pipelines per channel (standalone degradation)
         self._bf_pipeline = OpticalPipeline(
             psf_sigma=0, noise={"photon_scale": 5.0, "read_std": 3.0},
-            vignette=0.10, rng_seed=rng_seed + 1000,
+            vignette=0.10, rng_seed=seed + 1000,
         )
         self._nuc_pipeline = OpticalPipeline(
             psf_sigma=1.0, noise={"photon_scale": 3.0, "read_std": 2.5},
-            rng_seed=rng_seed + 2000,
+            rng_seed=seed + 2000,
         )
         self._mem_pipeline = OpticalPipeline(
             psf_sigma=0.8, noise={"photon_scale": 3.0, "read_std": 2.5},
-            rng_seed=rng_seed + 3000,
+            rng_seed=seed + 3000,
         )
 
         # Live pipeline mode: re-apply pipeline on each snap (for photobleaching)
@@ -138,7 +138,7 @@ class VoronoiSim(SimBase):
 
         # Stage drift angle (VoronoiSim adds directional drift)
         self.stage_drift_angle = 0.0
-        self._drift_rng = np.random.default_rng(rng_seed + 7777)
+        self._drift_rng = np.random.default_rng(seed + 7777)
 
         # Dummy _cells list (empty — no particle cells)
         self._cells = []
@@ -171,7 +171,7 @@ class VoronoiSim(SimBase):
 
     def _generate_centers(self, jitter: float) -> np.ndarray:
         """Generate cell centers using jittered hex grid."""
-        area_per_cell = (self.width * self.height) / self.nb_cells
+        area_per_cell = (self.width * self.height) / self.n_cells
         spacing = np.sqrt(area_per_cell / 0.866)
 
         centers = []
@@ -201,17 +201,17 @@ class VoronoiSim(SimBase):
         )
         centers = centers[mask]
 
-        if len(centers) > self.nb_cells:
-            idx = self.rng.choice(len(centers), self.nb_cells, replace=False)
+        if len(centers) > self.n_cells:
+            idx = self.rng.choice(len(centers), self.n_cells, replace=False)
             centers = centers[idx]
-        elif len(centers) < self.nb_cells:
-            extra = self.nb_cells - len(centers)
+        elif len(centers) < self.n_cells:
+            extra = self.n_cells - len(centers)
             new_pts = self.rng.uniform(
                 [10, 10], [self.width - 10, self.height - 10], (extra, 2)
             )
             centers = np.vstack([centers, new_pts])
 
-        return centers[: self.nb_cells]
+        return centers[: self.n_cells]
 
     def _compute_voronoi(self):
         """Compute Voronoi with mirrored boundary for clean edges."""
@@ -248,7 +248,7 @@ class VoronoiSim(SimBase):
                 self.cell_polygons.append(poly)
 
         # Pad if fewer valid regions than cells
-        while len(self.cell_polygons) < self.nb_cells:
+        while len(self.cell_polygons) < self.n_cells:
             idx = len(self.cell_polygons)
             cx, cy = self.centers[idx]
             r = 10
@@ -265,7 +265,7 @@ class VoronoiSim(SimBase):
             dict mapping cell index to set of neighbor indices.
             Only includes original cells (not mirror copies).
         """
-        n = self.nb_cells
+        n = self.n_cells
         neighbors = {i: set() for i in range(n)}
         for p1, p2 in self.vor.ridge_points:
             if p1 < n and p2 < n:
@@ -280,7 +280,7 @@ class VoronoiSim(SimBase):
             list of (cell_i, cell_j, length_px) tuples for each Voronoi ridge
             between original (non-mirror) cells.
         """
-        n = self.nb_cells
+        n = self.n_cells
         contacts = []
         for ridge_idx, (p1, p2) in enumerate(self.vor.ridge_points):
             if p1 >= n or p2 >= n:
@@ -296,11 +296,11 @@ class VoronoiSim(SimBase):
 
     def _compute_cell_properties(self):
         """Compute areas, centroids, nucleus radii."""
-        self.cell_areas = np.zeros(self.nb_cells)
-        self.cell_centroids = np.zeros((self.nb_cells, 2))
-        self.nucleus_radii = np.zeros(self.nb_cells)
+        self.cell_areas = np.zeros(self.n_cells)
+        self.cell_centroids = np.zeros((self.n_cells, 2))
+        self.nucleus_radii = np.zeros(self.n_cells)
 
-        for i, poly in enumerate(self.cell_polygons[: self.nb_cells]):
+        for i, poly in enumerate(self.cell_polygons[: self.n_cells]):
             # Area (shoelace)
             n = len(poly)
             if n < 3:
@@ -330,11 +330,11 @@ class VoronoiSim(SimBase):
             return
 
         self.render_polygons = []
-        for i, poly in enumerate(self.cell_polygons[:self.nb_cells]):
+        for i, poly in enumerate(self.cell_polygons[:self.n_cells]):
             if len(poly) < 3:
                 self.render_polygons.append(poly)
                 continue
-            rng = np.random.default_rng(self.rng_seed + i * 1000 + 7777)
+            rng = np.random.default_rng(self.seed + i * 1000 + 7777)
             ruffled = []
             n_verts = len(poly)
             subdivisions = 4  # each edge gets 4 sub-segments
@@ -361,7 +361,7 @@ class VoronoiSim(SimBase):
             self.render_polygons.append(np.array(ruffled))
 
         # Pad if needed
-        while len(self.render_polygons) < self.nb_cells:
+        while len(self.render_polygons) < self.n_cells:
             idx = len(self.render_polygons)
             if idx < len(self.cell_polygons):
                 self.render_polygons.append(self.cell_polygons[idx])
@@ -376,10 +376,10 @@ class VoronoiSim(SimBase):
             pass
 
         p = Proxy()
-        p.nb_cells = self.nb_cells
+        p.n_cells = self.n_cells
         p.width = self._iw
         p.height = self._ih
-        p.cell_polygons = [(poly * s) for poly in self.cell_polygons[:self.nb_cells]]
+        p.cell_polygons = [(poly * s) for poly in self.cell_polygons[:self.n_cells]]
         p.cell_centroids = self.cell_centroids * s
         p.nucleus_radii = self.nucleus_radii * s
         p.has_nucleus_marker = self.has_nucleus_marker
@@ -484,7 +484,7 @@ class VoronoiSim(SimBase):
         img = np.full((self._ih, self._iw, 3), 128, dtype=np.uint8)
         renderable = getattr(self, '_renderable', None)
 
-        for i, poly in enumerate(self.render_polygons[: self.nb_cells]):
+        for i, poly in enumerate(self.render_polygons[: self.n_cells]):
             if len(poly) < 3 or (renderable is not None and not renderable[i]):
                 continue
             stage = self._get_apoptosis_stage(i)
@@ -502,7 +502,7 @@ class VoronoiSim(SimBase):
                            (gray, gray, gray), -1, cv2.LINE_AA)
 
         # Phase-contrast halo
-        for i, poly in enumerate(self.render_polygons[: self.nb_cells]):
+        for i, poly in enumerate(self.render_polygons[: self.n_cells]):
             if len(poly) < 3 or (renderable is not None and not renderable[i]):
                 continue
             stage = self._get_apoptosis_stage(i)
@@ -518,7 +518,7 @@ class VoronoiSim(SimBase):
                               thickness=max(4, 4 * lt), lineType=cv2.LINE_AA)
 
         # Junctions
-        for i, poly in enumerate(self.render_polygons[: self.nb_cells]):
+        for i, poly in enumerate(self.render_polygons[: self.n_cells]):
             if len(poly) < 3 or (renderable is not None and not renderable[i]):
                 continue
             stage = self._get_apoptosis_stage(i)
@@ -533,7 +533,7 @@ class VoronoiSim(SimBase):
                               lineType=cv2.LINE_AA)
 
         # Nuclei (ellipsoidal, offset from centroid)
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if renderable is not None and not renderable[i]:
                 continue
             ncx, ncy = self._nuc_center(i)
@@ -563,18 +563,18 @@ class VoronoiSim(SimBase):
                 img, self._make_scaled_proxy(),
                 positive=self.has_nucleus_marker,
                 intensities=self.nucleus_intensity,
-                rng=np.random.default_rng(self.rng_seed + 5000),
+                rng=np.random.default_rng(self.seed + 5000),
                 renderable=renderable,
             )
         else:
-            for i, poly in enumerate(self.render_polygons[: self.nb_cells]):
+            for i, poly in enumerate(self.render_polygons[: self.n_cells]):
                 if len(poly) < 3 or (renderable is not None and not renderable[i]):
                     continue
                 pts = (poly * s).astype(np.int32).reshape(-1, 1, 2)
                 auto_level = int(self.rng.uniform(5, 12))
                 cv2.fillPoly(img, [pts], (auto_level, auto_level, auto_level))
 
-            for i in range(self.nb_cells):
+            for i in range(self.n_cells):
                 if renderable is not None and not renderable[i]:
                     continue
                 if not self.has_nucleus_marker[i]:
@@ -602,7 +602,7 @@ class VoronoiSim(SimBase):
         renderable = getattr(self, '_renderable', None)
 
         # Autofluorescence + cytoplasmic E-cadherin (ER/Golgi pool)
-        for i, poly in enumerate(self.render_polygons[: self.nb_cells]):
+        for i, poly in enumerate(self.render_polygons[: self.n_cells]):
             if len(poly) < 3 or (renderable is not None and not renderable[i]):
                 continue
             pts = (poly * s).astype(np.int32).reshape(-1, 1, 2)
@@ -614,7 +614,7 @@ class VoronoiSim(SimBase):
             cv2.fillPoly(img, [pts], (auto_level, auto_level, auto_level))
 
         # Base membrane signal
-        for i, poly in enumerate(self.render_polygons[: self.nb_cells]):
+        for i, poly in enumerate(self.render_polygons[: self.n_cells]):
             if len(poly) < 3 or not self.has_membrane_marker[i]:
                 continue
             if renderable is not None and not renderable[i]:
@@ -628,7 +628,7 @@ class VoronoiSim(SimBase):
                 bleb_r = max(8 * s, self._s(self.nucleus_radii[i] * 2.0))
                 n_blebs = 5 + stage * 2
                 bleb_intensity = max(30, intensity // 2)
-                rng = np.random.default_rng(self.rng_seed + i * 1000 + stage)
+                rng = np.random.default_rng(self.seed + i * 1000 + stage)
                 for _ in range(n_blebs):
                     angle = rng.uniform(0, 2 * np.pi)
                     dist = rng.uniform(bleb_r * 0.5, bleb_r * 1.3)
@@ -654,7 +654,7 @@ class VoronoiSim(SimBase):
         junction_gap = getattr(self, 'junction_gap_radius', 0)
         if junction_gap > 0:
             vert_degree = {}
-            n = self.nb_cells
+            n = self.n_cells
             for ridge_idx, (p1, p2) in enumerate(self.vor.ridge_points):
                 if p1 >= n or p2 >= n:
                     continue
@@ -666,8 +666,8 @@ class VoronoiSim(SimBase):
             tricell_vertices = {vi for vi, deg in vert_degree.items() if deg >= 3}
 
         # Shared-boundary brightness with per-ridge width variability
-        ridge_rng = np.random.default_rng(self.rng_seed + 7777)
-        n = self.nb_cells
+        ridge_rng = np.random.default_rng(self.seed + 7777)
+        n = self.n_cells
         for ridge_idx, (p1, p2) in enumerate(self.vor.ridge_points):
             if p1 >= n or p2 >= n:
                 continue
@@ -734,7 +734,7 @@ class VoronoiSim(SimBase):
             # Identify tricellular vertices if not already done
             if not tricell_vertices:
                 vert_degree = {}
-                nn = self.nb_cells
+                nn = self.n_cells
                 for ridge_idx, (p1, p2) in enumerate(self.vor.ridge_points):
                     if p1 >= nn or p2 >= nn:
                         continue
@@ -765,7 +765,7 @@ class VoronoiSim(SimBase):
         img = np.zeros((self._ih, self._iw, 3), dtype=np.uint8)
 
         renderable = getattr(self, '_renderable', None)
-        for i, poly in enumerate(self.render_polygons[:self.nb_cells]):
+        for i, poly in enumerate(self.render_polygons[:self.n_cells]):
             if len(poly) < 3 or not self.has_cytoplasm_marker[i]:
                 continue
             if renderable is not None and not renderable[i]:
@@ -787,7 +787,7 @@ class VoronoiSim(SimBase):
         s = self.internal_scale
         opl = np.full((self._ih, self._iw), 0.0, dtype=np.float32)
         renderable = getattr(self, '_renderable', None)
-        for i, poly in enumerate(self.render_polygons[:self.nb_cells]):
+        for i, poly in enumerate(self.render_polygons[:self.n_cells]):
             if len(poly) < 3 or (renderable is not None and not renderable[i]):
                 continue
             pts = (poly * s).astype(np.int32).reshape(-1, 1, 2)
@@ -796,7 +796,7 @@ class VoronoiSim(SimBase):
             cv2.fillPoly(mask, [pts], 255)
             opl[mask > 0] = cell_opl
 
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if renderable is not None and not renderable[i]:
                 continue
             ncx, ncy = self._nuc_center(i)
@@ -876,7 +876,7 @@ class VoronoiSim(SimBase):
             return img
 
         # Cytoplasmic GFP: fill cell polygon with (1 - nuc_fraction) * total
-        for i, poly in enumerate(self.render_polygons[:self.nb_cells]):
+        for i, poly in enumerate(self.render_polygons[:self.n_cells]):
             if len(poly) < 3:
                 continue
             if renderable is not None and not renderable[i]:
@@ -887,7 +887,7 @@ class VoronoiSim(SimBase):
             cv2.fillPoly(img, [pts], (intensity, intensity, intensity))
 
         # Nuclear GFP: bright nuclei where nuc_fraction is high
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             if renderable is not None and not renderable[i]:
                 continue
             ncx, ncy = self._nuc_center(i)
@@ -1024,7 +1024,7 @@ class VoronoiSim(SimBase):
         """
         z_lo = self.tissue_z - z_range / 2.0
         z_hi = self.tissue_z + z_range / 2.0
-        self.nucleus_z = self.rng.uniform(z_lo, z_hi, self.nb_cells)
+        self.nucleus_z = self.rng.uniform(z_lo, z_hi, self.n_cells)
         self._z_layer_positions = np.linspace(z_lo, z_hi, n_layers)
         # Assign each cell to its nearest layer
         self._cell_z_layer = np.argmin(
@@ -1180,7 +1180,7 @@ class VoronoiSim(SimBase):
 
             frac = cfg.get("fraction", 1.0)
             pattern = cfg.get("pattern", "random")
-            n_pos = int(self.nb_cells * frac)
+            n_pos = int(self.n_cells * frac)
 
             # Handle zero-fraction case
             if n_pos <= 0:
@@ -1189,25 +1189,25 @@ class VoronoiSim(SimBase):
 
             # Select positive cells based on pattern
             if pattern == "all" or frac >= 1.0:
-                indices = list(range(self.nb_cells))
+                indices = list(range(self.n_cells))
             elif pattern == "random":
-                indices = sorted(rng.choice(self.nb_cells, n_pos, replace=False).tolist())
+                indices = sorted(rng.choice(self.n_cells, n_pos, replace=False).tolist())
             elif pattern == "left":
-                left = [i for i in range(self.nb_cells)
+                left = [i for i in range(self.n_cells)
                         if self.cell_centroids[i][0] < self.width / 2]
                 indices = sorted(rng.choice(left, min(n_pos, len(left)), replace=False).tolist())
             elif pattern == "right":
-                right = [i for i in range(self.nb_cells)
+                right = [i for i in range(self.n_cells)
                          if self.cell_centroids[i][0] >= self.width / 2]
                 indices = sorted(rng.choice(right, min(n_pos, len(right)), replace=False).tolist())
             elif pattern == "gradient_x":
                 # Probability increases left to right
                 probs = np.array([self.cell_centroids[i][0] / self.width
-                                  for i in range(self.nb_cells)])
+                                  for i in range(self.n_cells)])
                 probs /= probs.sum()
-                indices = sorted(rng.choice(self.nb_cells, n_pos, replace=False, p=probs).tolist())
+                indices = sorted(rng.choice(self.n_cells, n_pos, replace=False, p=probs).tolist())
             else:
-                indices = sorted(rng.choice(self.nb_cells, n_pos, replace=False).tolist())
+                indices = sorted(rng.choice(self.n_cells, n_pos, replace=False).tolist())
 
             marker_arr[:] = False
             marker_arr[indices] = True
@@ -1218,7 +1218,7 @@ class VoronoiSim(SimBase):
                 mode = icfg.get("mode", "uniform")
                 if mode == "uniform":
                     lo, hi = icfg.get("range", [0.6, 1.0])
-                    intensity_arr[:] = rng.uniform(lo, hi, self.nb_cells)
+                    intensity_arr[:] = rng.uniform(lo, hi, self.n_cells)
                 elif mode == "bimodal":
                     bright_r = icfg.get("bright_range", [0.85, 1.0])
                     dim_r = icfg.get("dim_range", [0.4, 0.6])
@@ -1256,7 +1256,7 @@ class VoronoiSim(SimBase):
 
         mask = np.zeros((self.height, self.width), dtype=np.uint8)
         renderable = getattr(self, '_renderable', None)
-        for i, poly in enumerate(self.cell_polygons[:self.nb_cells]):
+        for i, poly in enumerate(self.cell_polygons[:self.n_cells]):
             if len(poly) < 3:
                 continue
             if renderable is not None and not renderable[i]:
@@ -1274,7 +1274,7 @@ class VoronoiSim(SimBase):
     def get_ground_truth(self):
         """Return ground truth data including shape descriptors."""
         cells = []
-        for i in range(self.nb_cells):
+        for i in range(self.n_cells):
             cx, cy = self.cell_centroids[i]
             poly = self.cell_polygons[i] if i < len(self.cell_polygons) else np.array([])
 
@@ -1311,7 +1311,7 @@ class VoronoiSim(SimBase):
             })
 
         return {
-            "n_cells": self.nb_cells,
+            "n_cells": self.n_cells,
             "cells": cells,
             "mean_area": round(float(self.cell_areas.mean()), 1),
             "n_nucleus_positive": int(self.has_nucleus_marker.sum()),

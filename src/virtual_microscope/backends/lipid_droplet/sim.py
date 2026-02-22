@@ -41,7 +41,7 @@ class LipidDropletSim(DynamicVoronoiSim):
         self._ld_cells = []  # List[List[dict]] per cell
         self._ld_steatotic = []  # bool: is this cell steatotic?
 
-        for i, center in enumerate(self.centers[:self.nb_cells]):
+        for i, center in enumerate(self.centers[:self.n_cells]):
             cx, cy = float(center[0]), float(center[1])
             if hasattr(self, 'cell_areas'):
                 cell_r = float(np.sqrt(self.cell_areas[i] / np.pi))

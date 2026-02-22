@@ -20,7 +20,7 @@ def create_sim(world_size=2048, worm_length=250.0, worm_width=18.0, speed=40.0, 
     )
 
 
-def setup_celegans_microscope(world_size=2048, worm_length=250.0, worm_width=18.0, speed=40.0, seed=42, fixed_dt=1.0):
+def setup_celegans(world_size=2048, worm_length=250.0, worm_width=18.0, speed=40.0, seed=42, fixed_dt=1.0):
     """Programmatic setup — .cfg is single source of truth for devices/channels."""
     sim = create_sim(world_size=world_size, worm_length=worm_length, worm_width=worm_width, speed=speed, seed=seed, fixed_dt=fixed_dt)
     core = load_cfg(sim, Path(__file__).parent / "celegans.cfg")

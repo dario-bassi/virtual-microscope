@@ -42,7 +42,7 @@ class LysosomeSim(DynamicVoronoiSim):
         self._lyso_cells = []  # List[List[dict]] — per cell, per lysosome
         renderable = getattr(self, '_renderable', None)
 
-        for i, center in enumerate(self.centers[:self.nb_cells]):
+        for i, center in enumerate(self.centers[:self.n_cells]):
             if renderable is not None and not renderable[i]:
                 self._lyso_cells.append([])
                 continue

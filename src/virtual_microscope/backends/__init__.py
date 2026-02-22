@@ -28,22 +28,18 @@ def load_backend(name: str, **kwargs):
 
     Args:
         name: Backend name (e.g. "bacteria", "voronoi", "zebrafish")
-        **kwargs: Forwarded to the backend's setup_<name>_microscope() function.
+        **kwargs: Forwarded to the backend's setup_<name>() function.
 
     Returns:
         (core, sim) tuple — or just core for the particle backend.
     """
     import importlib
     mod = importlib.import_module(f"virtual_microscope.backends.{name}")
-    # Try setup_<name>_microscope first, then setup_<name>
-    fn_name = f"setup_{name}_microscope"
+    fn_name = f"setup_{name}"
     fn = getattr(mod, fn_name, None)
     if fn is None:
-        fn_name = f"setup_{name}"
-        fn = getattr(mod, fn_name, None)
-    if fn is None:
         raise AttributeError(
-            f"Backend '{name}' has no setup function (tried "
-            f"setup_{name}_microscope and setup_{name})"
+            f"Backend '{name}' has no setup function "
+            f"(expected setup_{name})"
         )
     return fn(**kwargs)

@@ -81,7 +81,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     """Return 4 BF+mask+tracks timeseries frames showing upward cell steering."""
     from virtual_microscope.backends.optogenetic import create_sim
 
-    sim = create_sim(nb_cells=30, world_size=512, base_radius=20.0, seed=seed)
+    sim = create_sim(n_cells=30, world_size=512, base_radius=20.0, seed=seed)
     sim.auto_step = False
 
     steps_between = 120

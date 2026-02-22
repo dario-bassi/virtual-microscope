@@ -223,7 +223,7 @@ def render_textured_nuclei(
         intensities = sim.nucleus_intensity
 
     # Autofluorescence background in all cells
-    for i, poly in enumerate(sim.cell_polygons[:sim.nb_cells]):
+    for i, poly in enumerate(sim.cell_polygons[:sim.n_cells]):
         if len(poly) < 3 or (renderable is not None and not renderable[i]):
             continue
         pts = poly.astype(np.int32).reshape(-1, 1, 2)
@@ -235,7 +235,7 @@ def render_textured_nuclei(
     has_orient = hasattr(sim, '_nuc_orient')
 
     # Textured nuclei
-    for i in range(sim.nb_cells):
+    for i in range(sim.n_cells):
         if renderable is not None and not renderable[i]:
             continue
         if not positive[i]:

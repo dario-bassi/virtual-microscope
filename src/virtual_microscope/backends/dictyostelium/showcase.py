@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from virtual_microscope._showcase_utils import (
-    apply_cmap, apply_fluorescence, composite_max, snap_channel, GREEN, CYAN,
+    apply_cmap, apply_color, composite_max, snap_channel, GREEN, CYAN,
 )
 
 
@@ -30,7 +30,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     gfp = snap_channel(sim, mode=1, exposure=60.0)
     camp = snap_channel(sim, mode=2, exposure=60.0)
     img2 = composite_max(
-        apply_fluorescence(gfp, GREEN), apply_fluorescence(camp, CYAN),
+        apply_color(gfp, GREEN), apply_color(camp, CYAN),
     )
 
     # 3 — Streaming begins (t≈50)
@@ -39,7 +39,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     gfp = snap_channel(sim, mode=1, exposure=60.0)
     camp = snap_channel(sim, mode=2, exposure=60.0)
     img3 = composite_max(
-        apply_fluorescence(gfp, GREEN), apply_fluorescence(camp, CYAN),
+        apply_color(gfp, GREEN), apply_color(camp, CYAN),
     )
 
     # 4 — Late aggregation (t≈80)
@@ -48,7 +48,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     gfp = snap_channel(sim, mode=1, exposure=60.0)
     camp = snap_channel(sim, mode=2, exposure=60.0)
     img4 = composite_max(
-        apply_fluorescence(gfp, GREEN), apply_fluorescence(camp, CYAN),
+        apply_color(gfp, GREEN), apply_color(camp, CYAN),
     )
 
     return [img1, img2, img3, img4]

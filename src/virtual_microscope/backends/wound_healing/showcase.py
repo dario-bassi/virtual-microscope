@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from virtual_microscope._showcase_utils import (
-    apply_cmap, apply_fluorescence, snap_channel, GREEN,
+    apply_cmap, apply_color, snap_channel, GREEN,
 )
 
 
@@ -39,7 +39,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
 
     # 2 — Nucleus fluorescence at t=0
     nuc0 = snap_channel(sim, mode=1, exposure=60.0)
-    img2 = apply_fluorescence(nuc0, GREEN)
+    img2 = apply_color(nuc0, GREEN)
 
     # 3 — Step to let wound close
     for _ in range(30):
@@ -49,6 +49,6 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
 
     # 4 — Nucleus fluorescence after wound closure
     nuc_healed = snap_channel(sim, mode=1, exposure=60.0)
-    img4 = apply_fluorescence(nuc_healed, GREEN)
+    img4 = apply_color(nuc_healed, GREEN)
 
     return [img1, img2, img3, img4]

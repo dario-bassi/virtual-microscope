@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from virtual_microscope._showcase_utils import (
-    apply_cmap, apply_fluorescence, composite_max, snap_channel, GREEN, RED,
+    apply_cmap, apply_color, composite_max, snap_channel, GREEN, RED,
 )
 
 
@@ -26,11 +26,11 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
 
     # 2 — GFP vasculature
     gfp = snap_channel(sim, mode=1, exposure=60.0)
-    img2 = apply_fluorescence(gfp, GREEN)
+    img2 = apply_color(gfp, GREEN)
 
     # 3 — mCherry cardiac
     mch = snap_channel(sim, mode=2, exposure=60.0)
-    img3 = apply_fluorescence(mch, RED)
+    img3 = apply_color(mch, RED)
 
     # 4 — Composite: GFP + mCherry
     img4 = composite_max(img2, img3)

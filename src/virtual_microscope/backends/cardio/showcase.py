@@ -20,6 +20,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     from virtual_microscope.backends.cardio import create_sim
 
     sim = create_sim(grid_size=512, n_cells=300, seed=seed, internal_scale=4)
+    sim.auto_step = False  # decouple imaging from simulation
 
     # 1 — Resting tissue brightfield
     bf = snap_channel(sim, mode=0, exposure=50.0)
@@ -37,7 +38,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     gcamp2 = snap_channel(sim, mode=1, exposure=60.0)
     img3 = apply_color(gcamp2, GREEN)
 
-    # 4 — Composite BF + GCaMP
+    # 4 — Composite BF + GCaMP (same timepoint)
     bf2 = snap_channel(sim, mode=0, exposure=50.0)
     img4 = composite_max(apply_cmap(bf2, "gray"), apply_color(gcamp2, GREEN))
 

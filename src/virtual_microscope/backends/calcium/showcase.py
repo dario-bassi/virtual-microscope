@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from virtual_microscope._showcase_utils import (
-    apply_cmap, apply_fluorescence, snap_channel, GREEN,
+    apply_cmap, apply_color, snap_channel, GREEN,
 )
 
 
@@ -19,6 +19,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     from virtual_microscope.backends.calcium import create_sim
 
     sim = create_sim(grid_size=512, n_cells=200, seed=seed, internal_scale=4)
+    sim.auto_step = False  # decouple imaging from simulation
 
     # 1 — Brightfield
     bf = snap_channel(sim, mode=0, exposure=50.0)
@@ -26,18 +27,18 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
 
     # 2 — GCaMP at rest
     gcamp_rest = snap_channel(sim, mode=1, exposure=60.0)
-    img2 = apply_fluorescence(gcamp_rest, GREEN)
+    img2 = apply_color(gcamp_rest, GREEN)
 
     # 3 — Step to propagate waves
     for _ in range(8):
         sim.step(dt=1.0)
     gcamp_wave = snap_channel(sim, mode=1, exposure=60.0)
-    img3 = apply_fluorescence(gcamp_wave, GREEN)
+    img3 = apply_color(gcamp_wave, GREEN)
 
     # 4 — Step further to see refractory region
     for _ in range(8):
         sim.step(dt=1.0)
     gcamp_late = snap_channel(sim, mode=1, exposure=60.0)
-    img4 = apply_fluorescence(gcamp_late, GREEN)
+    img4 = apply_color(gcamp_late, GREEN)
 
     return [img1, img2, img3, img4]

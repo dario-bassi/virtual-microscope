@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from virtual_microscope._showcase_utils import (
-    apply_fluorescence, gray_to_rgb, snap_channel, GREEN,
+    apply_color, gray_to_rgb, snap_channel, GREEN,
 )
 
 
@@ -32,18 +32,18 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
 
     # 2 — SPT/TIRF channel
     spt = snap_channel(sim, mode=1, exposure=100.0)
-    img2 = apply_fluorescence(spt, GREEN)
+    img2 = apply_color(spt, GREEN)
 
     # 3 — After stepping
     for _ in range(10):
         sim.step(dt=1.0)
     spt2 = snap_channel(sim, mode=1, exposure=100.0)
-    img3 = apply_fluorescence(spt2, GREEN)
+    img3 = apply_color(spt2, GREEN)
 
     # 4 — After more steps
     for _ in range(20):
         sim.step(dt=1.0)
     spt3 = snap_channel(sim, mode=1, exposure=100.0)
-    img4 = apply_fluorescence(spt3, GREEN)
+    img4 = apply_color(spt3, GREEN)
 
     return [img1, img2, img3, img4]

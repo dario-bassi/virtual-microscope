@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from virtual_microscope._showcase_utils import (
-    apply_cmap, apply_fluorescence, composite_max, snap_channel, GREEN,
+    apply_cmap, apply_color, composite_max, snap_channel, GREEN,
 )
 
 
@@ -19,6 +19,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     from virtual_microscope.backends.bacteria import create_sim
 
     sim = create_sim(n_cells=30, seed=seed, world_size=512, internal_scale=4)
+    sim.auto_step = False  # decouple imaging from simulation
 
     # 1 — Phase contrast
     bf = snap_channel(sim, mode=0, exposure=50.0)
@@ -26,7 +27,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
 
     # 2 — GFP fluorescence (lower exposure for proper dark background)
     gfp = snap_channel(sim, mode=1, exposure=20.0)
-    img2 = apply_fluorescence(gfp, GREEN)
+    img2 = apply_color(gfp, GREEN)
 
     # 3 — After growth steps: larger colony
     for _ in range(20):
@@ -37,7 +38,7 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     # 4 — Composite: brightfield + GFP overlay
     gfp_grown = snap_channel(sim, mode=1, exposure=20.0)
     gray_bg = apply_cmap(bf_grown, "gray")
-    green_fg = apply_fluorescence(gfp_grown, GREEN)
+    green_fg = apply_color(gfp_grown, GREEN)
     img4 = composite_max(gray_bg, green_fg)
 
     return [img1, img2, img3, img4]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 from virtual_microscope._showcase_utils import (
-    apply_cmap, apply_fluorescence, composite_max, snap_channel, CYAN, GREEN,
+    apply_cmap, apply_color, composite_max, snap_channel, CYAN, GREEN,
 )
 
 
@@ -25,10 +25,10 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     img1 = apply_cmap(bf, "gray")
 
     nuc = snap_channel(sim, mode=1, exposure=60.0)
-    img2 = apply_fluorescence(nuc, CYAN)
+    img2 = apply_color(nuc, CYAN)
 
     sg = snap_channel(sim, mode=2, exposure=60.0)
-    img3 = apply_fluorescence(sg, GREEN)
+    img3 = apply_color(sg, GREEN)
 
     img4 = composite_max(img2, img3)
 

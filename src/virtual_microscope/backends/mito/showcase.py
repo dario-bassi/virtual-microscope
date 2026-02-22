@@ -20,20 +20,17 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
     from virtual_microscope.backends.mito import create_sim
 
     sim = create_sim(world_size=512, n_tubules=40, seed=seed, internal_scale=4)
+    sim.auto_step = False  # decouple imaging from simulation
 
-    # 1 — Brightfield overview
     bf = snap_channel(sim, mode=0, exposure=50.0)
-    img1 = apply_cmap(bf, "gray")
-
-    # 2 — MitoTracker (green) — apply_color bypasses bg subtraction
     mito = snap_channel(sim, mode=2, exposure=60.0)
-    img2 = apply_color(mito, GREEN)
-
-    # 3 — DAPI nuclei (cyan)
     dapi = snap_channel(sim, mode=1, exposure=60.0)
+
+    img1 = apply_cmap(bf, "gray")
+    img2 = apply_color(mito, GREEN)
     img3 = apply_color(dapi, CYAN)
 
-    # 4 — Composite MitoTracker + DAPI
+    # 4 — Composite MitoTracker + DAPI (same timepoint, channels overlap)
     img4 = composite_max(img2, img3)
 
     return [img1, img2, img3, img4]

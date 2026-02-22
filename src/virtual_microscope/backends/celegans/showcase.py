@@ -21,26 +21,17 @@ def create_showcase_images(seed: int = 0) -> list[np.ndarray]:
 
     # Smaller world for zoomed-in view of worm body
     sim = create_sim(world_size=768, seed=seed)
+    sim.auto_step = False  # decouple imaging from simulation
 
-    # 1 — DIC brightfield closeup
     bf = snap_channel(sim, mode=0, exposure=50.0)
-    img1 = apply_cmap(bf, "gray")
-
-    # 2 — GFP-pharynx channel
     gfp = snap_channel(sim, mode=1, exposure=60.0)
-    img2 = apply_color(gfp, GREEN)
-
-    # 3 — mCherry-body channel
     mch = snap_channel(sim, mode=2, exposure=60.0)
+
+    img1 = apply_cmap(bf, "gray")
+    img2 = apply_color(gfp, GREEN)
     img3 = apply_color(mch, RED)
 
-    # Step to show different body posture
-    for _ in range(3):
-        sim.step(dt=1.0)
-
-    # 4 — Composite GFP + mCherry
-    gfp2 = snap_channel(sim, mode=1, exposure=60.0)
-    mch2 = snap_channel(sim, mode=2, exposure=60.0)
-    img4 = composite_max(apply_color(gfp2, GREEN), apply_color(mch2, RED))
+    # 4 — Composite GFP + mCherry (same timepoint, channels overlap)
+    img4 = composite_max(img2, img3)
 
     return [img1, img2, img3, img4]

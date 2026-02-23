@@ -61,10 +61,19 @@ class SimulationBridge:
         return img
 
     def set_stage(self, x: float, y: float) -> None:
-        """Stage position is FOV center; convert to rendering origin (top-left of 10x image)."""
+        """Stage position relative to world center; convert to rendering origin.
+
+        (0, 0) centres the viewport on the world.  The stage coordinate
+        is added to the world centre so positive values pan right/down.
+        """
         self._stage_position = (x, y)
-        self._sim.camera_offset = np.array([x - self._BASE_HALF,
-                                             y - self._BASE_HALF])
+        sim = self._sim
+        world_cx = sim.width / 2.0
+        world_cy = sim.height / 2.0
+        self._sim.camera_offset = np.array([
+            world_cx + x - self._BASE_HALF,
+            world_cy + y - self._BASE_HALF,
+        ])
 
     def set_focus(self, z: float) -> None:
         self._sim.set_focal_plane(z)

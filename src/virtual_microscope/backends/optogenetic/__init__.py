@@ -13,7 +13,7 @@ from virtual_microscope.sims.cell.sim import ScatteredCellSim
 from virtual_microscope._init_standard import load_cfg
 
 
-def create_sim(n_cells=30, world_size=512, base_radius=20.0, seed=0, **kwargs) -> ScatteredCellSim:
+def create_sim(n_cells=30, world_size=600, base_radius=20.0, seed=0, **kwargs) -> ScatteredCellSim:
     """Create an optogenetic cell-motility simulation."""
     return ScatteredCellSim(
         width=world_size,

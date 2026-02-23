@@ -107,11 +107,13 @@ class MultiFieldBridge(SimulationBridge):
         # Set camera offset relative to the field's center
         fx, fy = self._positions[nearest]
         # Offset within the field: how far the stage is from field center
-        local_x = x - fx + self._BASE_HALF
-        local_y = y - fy + self._BASE_HALF
+        local_dx = x - fx
+        local_dy = y - fy
+        world_cx = self._sim.width / 2.0
+        world_cy = self._sim.height / 2.0
         self._sim.camera_offset = np.array([
-            local_x - self._BASE_HALF,
-            local_y - self._BASE_HALF,
+            world_cx + local_dx - self._BASE_HALF,
+            world_cy + local_dy - self._BASE_HALF,
         ])
 
     # ── Realtime dynamics support ───────────────────────────────────────────

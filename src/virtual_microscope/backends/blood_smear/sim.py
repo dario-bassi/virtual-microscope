@@ -772,6 +772,17 @@ class BloodSmearSim(SimBase):
 
     # -- SimulationBridge interface --
 
+    def _render_for_mode(self, mode):
+        if mode == 0:
+            return self._bf_full
+        elif mode == 1:
+            return self._nuc_full
+        elif mode == 2:
+            return self._mem_full
+        elif mode in self._extra_channels:
+            return self._extra_channels[mode].get("image", self._bf_full)
+        return self._bf_full
+
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
         """Capture a frame — compatible with SimulationBridge.
 

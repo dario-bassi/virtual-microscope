@@ -381,6 +381,15 @@ class ZebrafishSim(SimBase):
 
     # ── Rendering ──
 
+    def _render_for_mode(self, mode):
+        if mode == 0:
+            return self._render_bf()
+        elif mode == 1:
+            return self._render_vascular_gfp()
+        elif mode == 2:
+            return self._render_cardiac_gfp()
+        return self._render_bf()
+
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
         self._update_mode()
         self._update_objectif()

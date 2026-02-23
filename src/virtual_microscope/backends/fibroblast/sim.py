@@ -1007,17 +1007,11 @@ class FibroblastSim(SimBase):
                      lineType=cv2.LINE_AA)
 
     # ----------------------------------------------------------------
-    # SimulationBridge interface
+    # Template-method hooks
     # ----------------------------------------------------------------
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
-                   **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-        self._auto_step_tick()
-        self._snap_count += 1
-
+    def _render_for_mode(self, mode: int) -> np.ndarray:
+        """Return full-resolution BGR image for the active channel."""
         # Re-render if cell geometry changed (stretch, drug)
         if self._bf_dirty:
             self._bf_full = self._render_bf_full()
@@ -1028,23 +1022,16 @@ class FibroblastSim(SimBase):
             self._actin_dirty = False
 
         # Select pre-rendered image
-        if self.mode == 0:
-            full_img = self._bf_full
-        elif self.mode == 1:
-            full_img = self._nuc_full
-        elif self.mode == 2:
-            full_img = self._actin_full
-        elif self.mode in self._extra_channels:
-            full_img = self._extra_channels[self.mode]["image"]
+        if mode == 0:
+            return self._bf_full
+        elif mode == 1:
+            return self._nuc_full
+        elif mode == 2:
+            return self._actin_full
+        elif mode in self._extra_channels:
+            return self._extra_channels[mode]["image"]
         else:
-            full_img = self._bf_full
-
-        viewport = self._crop_fov(full_img)
-        viewport = self._apply_defocus(viewport)
-        viewport = self._apply_pipeline(viewport, exposure)
-        viewport = self._apply_exposure(viewport, exposure, intensity)
-
-        return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
+            return self._bf_full
 
     def apply_drug(self, drug_name: str, onset_rate: float = None):
         """Apply an actin-disrupting drug.

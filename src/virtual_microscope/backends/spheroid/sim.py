@@ -255,33 +255,20 @@ class SpheroidSim(SimBase):
 
     # ── Rendering ──
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        if self.mode == 0:
-            full = self._render_brightfield()
-        elif self.mode == 1:
-            full = self._render_calcein()
-        elif self.mode == 2:
-            full = self._render_pi()
-        elif self.mode in self._extra_channels:
-            full = self._extra_channels[self.mode].get("image",
-                                                        self._render_brightfield())
+    def _render_for_mode(self, mode):
+        """Return full-resolution BGR image for the active channel."""
+        if mode == 0:
+            gray = self._render_brightfield()
+        elif mode == 1:
+            gray = self._render_calcein()
+        elif mode == 2:
+            gray = self._render_pi()
+        elif mode in self._extra_channels:
+            gray = self._extra_channels[mode].get("image",
+                                                   self._render_brightfield())
         else:
-            full = self._render_brightfield()
-
-        # Crop FOV and resize to viewport
-        viewport = self._crop_fov(full)
-
-        # Apply optical pipeline (PSF, noise, vignetting)
-        viewport = self._apply_pipeline(viewport, exposure)
-
-        return viewport
+            gray = self._render_brightfield()
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
     def _visible_cells(self):
         """Get indices of cells visible at the current focal plane."""

@@ -222,6 +222,11 @@ class SPTSim(SimBase):
             self.tissue_z += (self.z_drift_rate * dt +
                               self._noise_rng.normal(0, max(self.z_drift_noise * np.sqrt(dt), 0)))
 
+    def _render_for_mode(self, mode):
+        if mode == 0:
+            return self._render_bf()
+        return self._render_spt()
+
     def snap_frame(self, mask=None, exposure: float = 50.0,
                    intensity: float = 1.0, **kwargs) -> np.ndarray:
         """Render current state. Returns uint8 (H, W, 3) image."""

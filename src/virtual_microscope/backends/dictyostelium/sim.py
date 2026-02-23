@@ -900,6 +900,13 @@ class DictyosteliumSim(SimBase):
         except (ValueError, AttributeError):
             pass
 
+    def _render_for_mode(self, mode):
+        if mode == 1:
+            return self._render_gfp()
+        elif mode == 2:
+            return self._render_camp()
+        return self._render_darkfield()
+
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
                    **kwargs) -> np.ndarray:
         """Capture a frame — compatible with SimulationBridge."""

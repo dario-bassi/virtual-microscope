@@ -903,13 +903,47 @@ class VoronoiSim(SimBase):
 
     # ---- SimulationBridge-compatible interface ----
 
+    def _render_for_mode(self, mode):
+        """Render full-resolution image for the given channel mode.
+
+        Handles both live_pipeline mode (re-apply per-channel pipeline with
+        bleaching on clean images) and static mode (return pre-rendered images,
+        with Z-layer compositing for nucleus channel when enabled).
+        """
+        if self.live_pipeline and self._bf_clean is not None:
+            # Live pipeline: re-apply per-channel pipeline with bleaching
+            pipelines = {0: self._bf_pipeline, 1: self._nuc_pipeline, 2: self._mem_pipeline}
+            cleans = {0: self._bf_clean, 1: self._nuc_clean, 2: self._mem_clean}
+            wavelengths = {0: 0, 1: self.nuc_wavelength, 2: self.mem_wavelength}
+            if mode in pipelines and mode in cleans:
+                return pipelines[mode].apply_with_bleach(
+                    cleans[mode].copy(), exposure_ms=50,
+                    wavelength_nm=wavelengths.get(mode, 0))
+            elif mode in self._extra_channels:
+                return self._extra_channels[mode]["image"]
+            return self._bf_pipeline.apply_with_bleach(
+                self._bf_clean.copy(), exposure_ms=50)
+        else:
+            # Static mode (default): use pre-rendered images
+            if mode == 0:
+                return self._bf_full
+            elif mode == 1:
+                if self._nuc_z_layers is not None:
+                    return self._composite_z_nuc()
+                return self._nuc_full
+            elif mode == 2:
+                return self._mem_full
+            elif mode in self._extra_channels:
+                return self._extra_channels[mode]["image"]
+            return self._bf_full
+
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs) -> np.ndarray:
         """Capture a frame — compatible with ScatteredCellSim.snap_frame()."""
         self._update_mode()
         self._update_objectif()
         self._snap_count += 1
 
-        # In live pipeline mode, re-apply pipeline with bleaching
+        # In live pipeline mode, pass actual exposure to apply_with_bleach
         if self.live_pipeline and self._bf_clean is not None:
             pipelines = {0: self._bf_pipeline, 1: self._nuc_pipeline, 2: self._mem_pipeline}
             cleans = {0: self._bf_clean, 1: self._nuc_clean, 2: self._mem_clean}
@@ -924,20 +958,7 @@ class VoronoiSim(SimBase):
                 full_img = self._bf_pipeline.apply_with_bleach(
                     self._bf_clean.copy(), exposure_ms=exposure)
         else:
-            # Static mode (default): use pre-rendered images
-            if self.mode == 0:
-                full_img = self._bf_full
-            elif self.mode == 1:
-                if self._nuc_z_layers is not None:
-                    full_img = self._composite_z_nuc()
-                else:
-                    full_img = self._nuc_full
-            elif self.mode == 2:
-                full_img = self._mem_full
-            elif self.mode in self._extra_channels:
-                full_img = self._extra_channels[self.mode]["image"]
-            else:
-                full_img = self._bf_full
+            full_img = self._render_for_mode(self.mode)
 
         # Apply stage drift (cumulative XY shift)
         if self.stage_drift_rate > 0 or self.stage_drift_noise > 0:

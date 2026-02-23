@@ -598,6 +598,9 @@ class VolvoxSim(SimBase):
 
         return img
 
+    def _render_for_mode(self, mode):
+        return self._render_frame()
+
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs) -> np.ndarray:
         """Capture a frame — compatible with SimulationBridge."""
         self._update_mode()

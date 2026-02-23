@@ -446,6 +446,27 @@ class NeuronSim(SimBase):
 
     # ── Rendering ──
 
+    def _render_for_mode(self, mode):
+        if mode == 0:
+            return self._bf_full
+        elif mode == 1:
+            full = self._map2_full
+            if self._calcium_enabled and self._ca_base_dim < 1.0:
+                full = (full.astype(np.float32) * self._ca_base_dim).astype(np.uint8)
+            if self._calcium_enabled and np.any(self._ca_levels > 0.05):
+                full = self._overlay_calcium(full)
+            return full
+        elif mode == 2:
+            return self._syn_full
+        elif mode in self._extra_channels:
+            ch = self._extra_channels[mode]
+            if ch.get("image") is not None:
+                return ch["image"]
+            elif ch.get("render_fn"):
+                return ch["render_fn"]()
+            return self._bf_full
+        return self._bf_full
+
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
         """Capture a frame — compatible with SimulationBridge."""
         self._update_mode()

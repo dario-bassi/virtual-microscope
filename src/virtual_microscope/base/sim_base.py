@@ -3,7 +3,7 @@
 Extracts ~1800 lines of duplicated boilerplate shared across 20+ standalone
 sims into a single ABC.  Every microscope-style backend (i.e. one that has
 objectives, FOV cropping, defocus, etc.) should inherit from SimBase and
-implement :meth:`snap_frame`.
+implement :meth:`_render_for_mode`.
 
 Non-microscope sims (PlateReaderSim, FlowCytometrySim, GelDocSim,
 HemocytometerSim, ColonySim) stay duck-typed and do NOT need this base.
@@ -18,8 +18,10 @@ import numpy as np
 class SimBase(ABC):
     """Abstract base class providing the SimulationBridge-compatible interface.
 
-    Subclasses must implement :meth:`snap_frame`.  All other methods have
-    sensible defaults or no-op stubs that can be overridden as needed.
+    Subclasses must implement :meth:`_render_for_mode`.  The canonical
+    ``snap_frame()`` pipeline is provided as a concrete template method.
+    Override ``_handle_mask()`` for SLM / optogenetic / drug stimulation,
+    and ``_finalize_output()`` to change the output format (e.g. RGB).
 
     Class attributes:
         continuous: Set to ``True`` on dynamic backends whose simulation
@@ -52,7 +54,10 @@ class SimBase(ABC):
         self.viewport_height = viewport_height
 
         # ── Camera / state (SimulationBridge interface) ──
-        self.camera_offset = np.array([0.0, 0.0])
+        self.camera_offset = np.array([
+            (width - viewport_width) / 2.0,
+            (height - viewport_height) / 2.0,
+        ])
         self.focal_plane = 0.0
         self.tissue_z = 0.0
         self.state_devices: dict = {}
@@ -282,14 +287,52 @@ class SimBase(ABC):
         self.tissue_z = 0.0
 
     # ──────────────────────────────────────────────────────────
+    # Template method — snap_frame pipeline
+    # ──────────────────────────────────────────────────────────
+
+    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
+                   **kwargs) -> np.ndarray:
+        """Capture a rendered frame (template method).
+
+        Orchestrates the canonical 9-step pipeline.  Subclasses should
+        override ``_render_for_mode`` (required), ``_handle_mask``, or
+        ``_finalize_output`` rather than replacing this method.
+        """
+        self._update_mode()
+        self._update_objectif()
+        if mask is not None:
+            self._handle_mask(mask)
+        self._auto_step_tick()
+        self._snap_count += 1
+
+        full = self._render_for_mode(self.mode)
+
+        viewport = self._crop_fov(full)
+        viewport = self._apply_defocus(viewport)
+        viewport = self._apply_pipeline(viewport, exposure)
+        viewport = self._apply_exposure(viewport, exposure, intensity)
+        return self._finalize_output(viewport)
+
+    # ──────────────────────────────────────────────────────────
     # Abstract / stubs
     # ──────────────────────────────────────────────────────────
 
     @abstractmethod
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
-                   **kwargs) -> np.ndarray:
-        """Capture a rendered frame.  Must be implemented by every backend."""
+    def _render_for_mode(self, mode: int) -> np.ndarray:
+        """Render full-resolution image for the given channel *mode*.
+
+        Must return a BGR ``uint8`` image at internal resolution
+        (``self._iw × self._ih``).  The base-class pipeline handles
+        FOV cropping, defocus, noise, exposure, and grayscale conversion.
+        """
         ...
+
+    def _handle_mask(self, mask: np.ndarray) -> None:
+        """Process an SLM / stimulation mask.  Override in subclasses."""
+
+    def _finalize_output(self, viewport: np.ndarray) -> np.ndarray:
+        """Convert viewport to final output format (BGR → grayscale)."""
+        return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
 
     def step(self, dt: float = 1.0):
         """Advance simulation by *dt*.  Override in dynamic sims."""

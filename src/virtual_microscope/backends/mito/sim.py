@@ -798,31 +798,21 @@ class MitoSim(SimBase):
         """Background value for out-of-bounds padding in ``_crop_fov``."""
         return 200 if self.mode == 0 else 0
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
-                   **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        # Render (always fresh for mito since dynamics change it)
-        if self.mode == 0:
-            full_img = self._render_bf_full()
-        elif self.mode == 1:
-            full_img = self._render_nuc_full()
-        elif self.mode == 2:
-            full_img = self._render_mito_full()
-        elif self.mode in self._extra_channels:
-            full_img = self._extra_channels[self.mode]["image"].copy()
+    def _render_for_mode(self, mode: int) -> np.ndarray:
+        """Return full-resolution image for the active channel."""
+        if mode == 0:
+            return self._render_bf_full()
+        elif mode == 1:
+            return self._render_nuc_full()
+        elif mode == 2:
+            return self._render_mito_full()
+        elif mode in self._extra_channels:
+            return self._extra_channels[mode]["image"].copy()
         else:
-            full_img = self._render_bf_full()
+            return self._render_bf_full()
 
-        viewport = self._crop_fov(full_img)
-        viewport = self._apply_defocus(viewport)
-        viewport = self._apply_pipeline(viewport, exposure)
-        viewport = self._apply_exposure(viewport, exposure, intensity)
-
+    def _finalize_output(self, viewport: np.ndarray) -> np.ndarray:
+        """Convert viewport to grayscale; handle both 2D and 3D inputs."""
         if viewport.ndim == 3:
             return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
         return viewport

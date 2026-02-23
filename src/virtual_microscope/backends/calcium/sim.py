@@ -659,22 +659,31 @@ class CalciumSim(SimBase):
 
         return np.stack([membrane, membrane, membrane], axis=2)
 
-    # ── snap_frame ──
+    # ── Template hooks ──
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
-                   **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
+    def _render_for_mode(self, mode: int) -> np.ndarray:
+        """Return full-resolution BGR image for the active channel."""
+        if mode == 0:
+            return self._render_bf_full()
+        elif mode == 1:
+            return self._render_nuc_full()
+        elif mode == 2:
+            return self._render_mem_full()
+        elif mode in self._extra_channels:
+            return self._extra_channels[mode]["image"]
+        else:
+            return self._render_bf_full()
 
+    def _handle_mask(self, mask: np.ndarray) -> None:
+        """Read SLM-Mode device and downsample mask to coarse PDE grid."""
         # Read SLM-Mode device if present (0=excite, 1=inhibit)
         if "SLM-Mode" in self.state_devices:
             mode_dev = self.state_devices["SLM-Mode"]
             label = mode_dev.get("Label", mode_dev.get("label", "excite"))
             self._slm_mode = 1 if label == "inhibit" else 0
 
-        # Handle SLM mask: downsample to coarse grid
-        if mask is not None and np.any(mask):
+        # Downsample mask to coarse grid
+        if np.any(mask):
             coarse = cv2.resize(
                 mask.astype(np.uint8), (self.SIM_SIZE, self.SIM_SIZE),
                 interpolation=cv2.INTER_NEAREST,
@@ -682,29 +691,6 @@ class CalciumSim(SimBase):
             self._stim_mask = coarse
         else:
             self._stim_mask = None
-
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        # Render at internal resolution
-        if self.mode == 0:
-            full_img = self._render_bf_full()
-        elif self.mode == 1:
-            full_img = self._render_nuc_full()
-        elif self.mode == 2:
-            full_img = self._render_mem_full()
-        elif self.mode in self._extra_channels:
-            full_img = self._extra_channels[self.mode]["image"]
-        else:
-            full_img = self._render_bf_full()
-
-        # Crop FOV and resize to viewport
-        viewport = self._crop_fov(full_img)
-        viewport = self._apply_defocus(viewport)
-        viewport = self._apply_pipeline(viewport, exposure)
-        viewport = self._apply_exposure(viewport, exposure, intensity)
-
-        return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
 
     def reset(self, seed: int = None):
         super().reset(seed)

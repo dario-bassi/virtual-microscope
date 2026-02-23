@@ -608,6 +608,19 @@ class CelegansSim(SimBase):
         f += self._noise_rng.normal(0, 3, f.shape).astype(np.float32)
         return np.clip(f, 0, 255).astype(np.uint8)
 
+    # ── Template-method hook ──
+
+    def _render_for_mode(self, mode):
+        if mode == 0:
+            return self._render_bf_full()
+        elif mode == 1:
+            return self._render_nuc_full()
+        elif mode == 2:
+            return self._render_mem_full()
+        elif mode in self._extra_channels:
+            return self._extra_channels[mode]["image"]
+        return self._render_bf_full()
+
     # ── snap_frame (SimulationBridge interface) ──
 
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,

@@ -940,57 +940,42 @@ class BacteriaSim(SimBase):
 
         return img
 
-    # ── snap_frame ──
+    # ── Template-method hooks ──
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
-                   **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-
-        # Handle SLM mask for chemotaxis + phototaxis
-        if mask is not None:
-            if np.any(mask):
-                m = mask.astype(np.uint8)
-                if m.shape[0] != self.height or m.shape[1] != self.width:
-                    m = cv2.resize(m, (self.width, self.height),
-                                   interpolation=cv2.INTER_NEAREST)
-                self._stim_mask = m
-                if self._phototaxis_enabled:
-                    self._slm_mask = self._map_slm_to_world(mask)
-            else:
-                # Explicit empty mask = clear SLM (turn off phototaxis)
-                self._stim_mask = None
-                self._slm_mask = None
-        # else: mask is None (non-SLM channel snap) → keep cached mask active
-
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        # Render at internal resolution
-        if self.mode == 0:
-            full_img = self._render_bf_full()
-        elif self.mode == 1:
-            full_img = self._render_gfp_full()
-        elif self.mode == 2:
+    def _render_for_mode(self, mode: int) -> np.ndarray:
+        """Return full-resolution BGR image for the active channel."""
+        if mode == 0:
+            return self._render_bf_full()
+        elif mode == 1:
+            return self._render_gfp_full()
+        elif mode == 2:
             if self._attractant_channel_active:
-                full_img = self._render_attractant_full()
+                return self._render_attractant_full()
             else:
-                full_img = self._render_dapi_full()
-        elif self.mode in self._extra_channels:
-            ch = self._extra_channels[self.mode]
+                return self._render_dapi_full()
+        elif mode in self._extra_channels:
+            ch = self._extra_channels[mode]
             if "render" in ch and callable(ch["render"]):
-                full_img = ch["render"]()
+                return ch["render"]()
             else:
-                full_img = ch["image"]
+                return ch["image"]
         else:
-            full_img = self._render_bf_full()
+            return self._render_bf_full()
 
-        viewport = self._crop_fov(full_img)
-        viewport = self._apply_defocus(viewport)
-        viewport = self._apply_pipeline(viewport, exposure)
-        viewport = self._apply_exposure(viewport, exposure, intensity)
-        return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
+    def _handle_mask(self, mask) -> None:
+        """Handle SLM mask for chemotaxis + phototaxis."""
+        if np.any(mask):
+            m = mask.astype(np.uint8)
+            if m.shape[0] != self.height or m.shape[1] != self.width:
+                m = cv2.resize(m, (self.width, self.height),
+                               interpolation=cv2.INTER_NEAREST)
+            self._stim_mask = m
+            if self._phototaxis_enabled:
+                self._slm_mask = self._map_slm_to_world(mask)
+        else:
+            # Explicit empty mask = clear SLM (turn off phototaxis)
+            self._stim_mask = None
+            self._slm_mask = None
 
     # ── Ground truth ──
 

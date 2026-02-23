@@ -1591,6 +1591,13 @@ class HistologySim(SimBase):
 
     # -- SimulationBridge interface --
 
+    def _render_for_mode(self, mode):
+        if mode == 1:
+            return self._nuc_full
+        elif mode == 2:
+            return self._eos_full
+        return self._bf_full
+
     def snap_frame(self, mask=None, exposure=50, intensity=100, **kwargs):
         """Return a viewport-cropped image of the current channel.
 

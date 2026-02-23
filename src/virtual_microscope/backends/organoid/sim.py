@@ -378,29 +378,20 @@ class OrganoidSim(SimBase):
 
     # ── Rendering ──
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
-        self._update_mode()
-        self._update_objectif()
-
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        if self.mode == 0:
-            full = self._render_brightfield()
-        elif self.mode == 1:
-            full = self._render_dapi()
-        elif self.mode == 2:
-            full = self._render_ecadherin()
-        elif self.mode in self._extra_channels:
-            full = self._extra_channels[self.mode].get(
+    def _render_for_mode(self, mode):
+        """Return full-resolution BGR image for the active channel."""
+        if mode == 0:
+            gray = self._render_brightfield()
+        elif mode == 1:
+            gray = self._render_dapi()
+        elif mode == 2:
+            gray = self._render_ecadherin()
+        elif mode in self._extra_channels:
+            gray = self._extra_channels[mode].get(
                 "image", self._render_brightfield())
         else:
-            full = self._render_brightfield()
-
-        viewport = self._crop_fov(full)
-        viewport = self._apply_pipeline(viewport, exposure)
-
-        return viewport
+            gray = self._render_brightfield()
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
     # ── Dynamics ──
 

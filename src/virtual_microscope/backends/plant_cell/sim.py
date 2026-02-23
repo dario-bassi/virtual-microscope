@@ -617,28 +617,19 @@ class PlantCellSim(SimBase):
 
     # ── Snap frame ──
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-        self._snap_count += 1
-
-        if self.mode == 0:
-            full = self._bf_full
-        elif self.mode == 1:
-            full = self._nuc_full
-        elif self.mode == 2:
-            full = self._mem_full
+    def _render_for_mode(self, mode):
+        """Return full-resolution BGR image for the active channel."""
+        if mode == 0:
+            gray = self._bf_full
+        elif mode == 1:
+            gray = self._nuc_full
+        elif mode == 2:
+            gray = self._mem_full
+        elif mode in self._extra_channels:
+            gray = self._extra_channels[mode].get("image", self._bf_full)
         else:
-            if self.mode in self._extra_channels:
-                full = self._extra_channels[self.mode].get("image", self._bf_full)
-            else:
-                full = self._bf_full
-
-        crop = self._crop_fov(full)
-        crop = self._apply_defocus(crop)
-        crop = self._apply_pipeline(crop, exposure)
-        return crop
+            gray = self._bf_full
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
     def apply_salt(self, concentration: float = 0.5):
         """Apply hypertonic salt solution to induce plasmolysis.

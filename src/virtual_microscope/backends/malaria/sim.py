@@ -187,10 +187,12 @@ class MalariaSmearSim(SimBase):
         self._wbc_cyto_neut = (210, 195, 205)    # pale pink
         self._wbc_cyto_lymph = (175, 185, 210)   # pale blue
 
-        # Optical pipeline (single instance, not per-channel dict)
+        # Optical pipeline (single instance, shared across all channels)
         self._malaria_pipeline = OpticalPipeline()
         self._malaria_pipeline.noise = {"photon_scale": 500, "read_noise": 1.5}
         self._malaria_pipeline.vignette = 0.05
+        self._pipeline = {0: self._malaria_pipeline, 1: self._malaria_pipeline,
+                          2: self._malaria_pipeline}
 
         # Generate and render
         self._generate_cells()
@@ -704,35 +706,30 @@ class MalariaSmearSim(SimBase):
         img += 2.0
         return np.clip(img, 0, 255).astype(np.uint8)
 
-    # ── Snap frame ──
+    # ── Template hooks ──
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        # Re-render if dirty
+    def _render_for_mode(self, mode: int) -> np.ndarray:
+        """Return full-resolution image for the active channel."""
+        # Re-render if dirty (infection dynamics changed)
         if self._dirty:
             self._rerender_dynamic()
 
-        if self.mode == 0:
-            full = self._bf_full
-        elif self.mode == 1:
-            full = self._nuc_full
-        elif self.mode == 2:
-            full = self._mem_full
+        if mode == 0:
+            return self._bf_full
+        elif mode == 1:
+            return self._nuc_full
+        elif mode == 2:
+            return self._mem_full
+        elif mode in self._extra_channels:
+            return self._extra_channels[mode].get("image", self._bf_full)
         else:
-            if self.mode in self._extra_channels:
-                full = self._extra_channels[self.mode].get("image", self._bf_full)
-            else:
-                full = self._bf_full
+            return self._bf_full
 
-        crop = self._crop_fov(full)
-        crop = self._malaria_pipeline.apply(crop)
-        return crop
+    def _finalize_output(self, viewport: np.ndarray) -> np.ndarray:
+        """Convert viewport to grayscale; handle both 2D and 3D inputs."""
+        if viewport.ndim == 3:
+            return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
+        return viewport
 
     def _age_to_stage(self, age):
         """Convert parasite age (hours) to lifecycle stage name."""

@@ -773,6 +773,13 @@ class MicrofluidicsSim(SimBase):
                     "y": float(self._cell_y[i]),
                 })
 
+    def _render_for_mode(self, mode):
+        if mode == 1:
+            return self._render_nuc()
+        elif mode == 2:
+            return self._render_gradient()
+        return self._render_bf()
+
     def snap_frame(self, mask=None, exposure=None, intensity=None,
                    **kwargs) -> np.ndarray:
         """Capture one frame from the current mode/objective."""

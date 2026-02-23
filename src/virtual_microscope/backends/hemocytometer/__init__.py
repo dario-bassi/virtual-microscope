@@ -23,17 +23,10 @@ def create_sim(n_cells=150, viability=0.85, cell_radius_range=(3, 7), dilution_f
 
 
 def setup_hemocytometer(n_cells=150, viability=0.85, cell_radius_range=(3, 7), dilution_factor=2, clump_fraction=0.0, seed=42):
-    """Programmatic setup (no .cfg needed)."""
-    from virtual_microscope._init_standard import load_standalone
-    from virtual_microscope.devices.state import GenericStateDevice
+    """Programmatic setup — .cfg is single source of truth for devices/channels."""
+    from pathlib import Path
+    from virtual_microscope._init_standard import load_cfg
 
     sim = create_sim(n_cells=n_cells, viability=viability, cell_radius_range=cell_radius_range, dilution_factor=dilution_factor, clump_fraction=clump_fraction, seed=seed)
-    labels = {0: "brightfield", 1: "trypan-blue"}
-    core = load_standalone(sim,
-        channels={
-            "brightfield": ("Channel", "Label", "brightfield"),
-            "trypan-blue": ("Channel", "Label", "trypan-blue"),
-        },
-        extra_devices={"Channel": GenericStateDevice("Channel", labels)},
-    )
+    core = load_cfg(sim, Path(__file__).parent / "hemocytometer.cfg")
     return core, sim

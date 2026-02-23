@@ -16,24 +16,29 @@ def create_sim(assay_type="viability", seed=42) -> PlateReaderSim:
 
 
 def setup_plate_reader(assay_type="viability", seed=42):
-    """Programmatic setup (no .cfg needed)."""
-    from virtual_microscope._init_standard import load_standalone
-    from virtual_microscope.devices.state import GenericStateDevice
+    """Programmatic setup — .cfg is single source of truth for devices/channels.
+
+    Channel configs are added dynamically after loading the .cfg because
+    the available wavelengths depend on the assay preset.
+    """
+    from pathlib import Path
+    from virtual_microscope._init_standard import load_cfg
     from virtual_microscope.backends.plate_reader.sim import ASSAY_PRESETS
 
     sim = create_sim(assay_type=assay_type, seed=seed)
+    core = load_cfg(sim, Path(__file__).parent / "plate_reader.cfg")
 
-    # Build channel labels + configs from assay preset
+    # Add dynamic channel configs based on assay preset
     preset = ASSAY_PRESETS.get(assay_type, ASSAY_PRESETS["viability"])
     wl_pri = preset["wavelength_primary"]
     wl_ref = preset.get("wavelength_reference")
-    labels = {0: f"{wl_pri}nm" if wl_pri else "luminescence"}
-    if wl_ref:
-        labels[1] = f"{wl_ref}nm-ref"
 
-    channels = {lbl: ("Channel", "Label", lbl) for lbl in labels.values()}
-    core = load_standalone(sim,
-        channels=channels,
-        extra_devices={"Channel": GenericStateDevice("Channel", labels)},
-    )
+    core.defineConfigGroup("Channel")
+    pri_label = f"{wl_pri}nm" if wl_pri else "luminescence"
+    core.defineConfig("Channel", pri_label, "Channel", "Label", pri_label)
+    if wl_ref:
+        ref_label = f"{wl_ref}nm-ref"
+        core.defineConfig("Channel", ref_label, "Channel", "Label", ref_label)
+    core.setConfig("Channel", pri_label)
+
     return core, sim

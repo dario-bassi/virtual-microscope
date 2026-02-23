@@ -16,13 +16,10 @@ def create_sim(n_lanes=8, gel_type="western", seed=42) -> GelDocSim:
 
 
 def setup_gel_doc(n_lanes=8, gel_type="western", seed=42):
-    """Programmatic setup (no .cfg needed)."""
-    from virtual_microscope._init_standard import load_standalone
-    from virtual_microscope.devices.state import ObjectiveDevice
+    """Programmatic setup — .cfg is single source of truth for devices/channels."""
+    from pathlib import Path
+    from virtual_microscope._init_standard import load_cfg
 
     sim = create_sim(n_lanes=n_lanes, gel_type=gel_type, seed=seed)
-    core = load_standalone(sim,
-        channels={"gel-image": ("Objective", "Label", "10x")},
-        extra_devices={"Objective": ObjectiveDevice()},
-    )
+    core = load_cfg(sim, Path(__file__).parent / "gel_doc.cfg")
     return core, sim

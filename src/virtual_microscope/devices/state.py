@@ -255,3 +255,12 @@ class FlowCytometerDetectorDevice(GenericStateDevice):
 
     def __init__(self) -> None:
         super().__init__("Detector", self.MODES)
+
+
+class PlateReaderChannelDevice(GenericStateDevice):
+    """Channel selector for plate reader backend (wavelengths set dynamically)."""
+
+    MODES = {0: "primary", 1: "reference"}
+
+    def __init__(self) -> None:
+        super().__init__("Channel", self.MODES)

@@ -29,18 +29,10 @@ def create_sim(n_colonies=200, plate_type="spread", seed=42, distribution="rando
 
 
 def setup_colony_counter(n_colonies=200, plate_type="spread", seed=42, **kwargs):
-    """Programmatic setup (no .cfg needed)."""
-    from virtual_microscope._init_standard import load_standalone
-    from virtual_microscope.devices.state import GenericStateDevice
+    """Programmatic setup — .cfg is single source of truth for devices/channels."""
+    from pathlib import Path
+    from virtual_microscope._init_standard import load_cfg
 
     sim = create_sim(n_colonies=n_colonies, plate_type=plate_type, seed=seed, **kwargs)
-    labels = {0: "transmitted", 1: "blue-filter", 2: "GFP-excitation"}
-    core = load_standalone(sim,
-        channels={
-            "plate-image": ("Channel", "Label", "transmitted"),
-            "blue-channel": ("Channel", "Label", "blue-filter"),
-            "gfp-channel": ("Channel", "Label", "GFP-excitation"),
-        },
-        extra_devices={"Channel": GenericStateDevice("Channel", labels)},
-    )
+    core = load_cfg(sim, Path(__file__).parent / "colony_counter.cfg")
     return core, sim

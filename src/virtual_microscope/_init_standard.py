@@ -1,19 +1,14 @@
 """Standard device stack initializer — shared by all programmatic setup_* functions.
 
-The primary entry point is ``load_cfg(sim, cfg_path)`` which:
+The single entry point is ``load_cfg(sim, cfg_path)`` which:
   1. Wires the simulation into the global bridge
   2. Loads the backend .cfg (devices, channels, everything)
   3. Installs pixel-size helper
   4. Optionally auto-starts the RealtimeEngine for continuous sims
 
-For standalone (non-.cfg) backends, use ``load_standalone(sim, channels, ...)``.
-
 Usage:
     from virtual_microscope._init_standard import load_cfg
     core = load_cfg(sim, Path(__file__).parent / "bacteria.cfg")
-
-    from virtual_microscope._init_standard import load_standalone
-    core = load_standalone(sim, channels={"brightfield": ("Channel", "Label", "bf")})
 """
 
 import logging
@@ -37,7 +32,10 @@ def _install_pixel_size(core: UniMMCore, sim) -> None:
     _obj_factors = {0: 1, 1: 2, 2: 4, 3: 8}
 
     def _get_pixel_size_um(cached=False):
-        obj_state = core.getState("Objective")
+        try:
+            obj_state = core.getState("Objective")
+        except Exception:
+            return world_px_um
         factor = _obj_factors.get(obj_state, 1)
         return world_px_um / factor
 
@@ -53,7 +51,7 @@ def load_cfg(sim, cfg_path: Path, *,
              idle_timeout: float = 30.0) -> UniMMCore:
     """Load a backend .cfg after pre-creating the simulation with custom params.
 
-    This is the single entry point for programmatic setup_*_microscope() calls.
+    This is the single entry point for programmatic setup_*() calls.
     The .cfg is the sole source of truth for devices and channel definitions.
 
     Args:
@@ -94,68 +92,5 @@ def load_cfg(sim, cfg_path: Path, *,
         bridge._engine = engine
         logger.info("RealtimeEngine auto-started for %s (tick_hz=%d, idle_timeout=%.0fs)",
                     type(sim).__name__, tick_hz, idle_timeout)
-
-    return core
-
-
-def load_standalone(sim,
-                    channels: dict[str, tuple[str, str, str]],
-                    extra_devices: dict | None = None) -> UniMMCore:
-    """Set up a standalone (no .cfg) backend with manual device wiring.
-
-    Handles the common boilerplate: global bridge, Camera, Shutter,
-    optional extra devices, and Channel config group.
-
-    Args:
-        sim: The simulation instance.
-        channels: Mapping of config_name → (device, property, value).
-            Example: ``{"brightfield": ("Channel", "Label", "brightfield")}``
-        extra_devices: Optional mapping of device_name → device_instance.
-            Common devices: ``GenericStateDevice``, ``ObjectiveDevice``.
-
-    Returns:
-        Configured UniMMCore instance.
-    """
-    from virtual_microscope.devices.camera import SimCameraDevice
-    from virtual_microscope.devices.shutter import SimShutterDevice
-
-    bridge = SimulationBridge(sim)
-    set_global_bridge(bridge)
-
-    core = UniMMCore()
-    core.unloadAllDevices()
-
-    core.loadPyDevice("Camera", SimCameraDevice())
-    core.loadPyDevice("Shutter", SimShutterDevice())
-
-    if extra_devices:
-        for name, device in extra_devices.items():
-            core.loadPyDevice(name, device)
-
-    # Initialize all loaded devices
-    devices = ["Camera", "Shutter"]
-    if extra_devices:
-        devices.extend(extra_devices)
-    for dev in devices:
-        core.initializeDevice(dev)
-
-    core.setCameraDevice("Camera")
-    core.setShutterDevice("Shutter")
-
-    # Set initial state for state devices
-    if extra_devices:
-        for name in extra_devices:
-            try:
-                core.setState(name, 0)
-            except Exception:
-                pass
-
-    # Build Channel config group
-    if channels:
-        core.defineConfigGroup("Channel")
-        for config_name, (dev, prop, val) in channels.items():
-            core.defineConfig("Channel", config_name, dev, prop, val)
-        first = next(iter(channels))
-        core.setConfig("Channel", first)
 
     return core

@@ -467,60 +467,27 @@ class NeuronSim(SimBase):
             return self._bf_full
         return self._bf_full
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-
-        # Map SLM mask to world coordinates (ChR2 optogenetics)
-        if mask is not None and np.any(mask):
+    def _handle_mask(self, mask):
+        """Map SLM mask to world coordinates and apply ChR2 stimulation."""
+        if np.any(mask):
             self._slm_mask = self._map_slm_to_world(mask)
         else:
             self._slm_mask = None
+        # SLM optogenetic stimulation (ChR2) — observation-coupled effect.
+        if self._slm_mask is not None and self._calcium_enabled:
+            self._apply_slm_stimulation()
 
-        # Auto-step dynamics
+    def _auto_step_tick(self):
+        """Auto-step only when calcium is enabled."""
         if self.auto_step and self._calcium_enabled:
             self._snap_counter_auto += 1
             if self._snap_counter_auto >= self.snaps_per_step:
                 self._snap_counter_auto = 0
                 self.step()
 
-        # SLM optogenetic stimulation (ChR2) — observation-coupled effect.
-        # Applied during snap (laser on during exposure), not during step().
-        if self._slm_mask is not None and self._calcium_enabled:
-            self._apply_slm_stimulation()
-
-        self._snap_count += 1
-
-        if self.mode == 0:
-            full = self._bf_full
-        elif self.mode == 1:
-            full = self._map2_full
-            # In calcium-imaging mode, dim the MAP2 base to model resting
-            # GCaMP fluorescence (low baseline → high dynamic range)
-            if self._calcium_enabled and self._ca_base_dim < 1.0:
-                full = (full.astype(np.float32) * self._ca_base_dim).astype(np.uint8)
-            # Overlay calcium transients on MAP2 channel
-            if self._calcium_enabled and np.any(self._ca_levels > 0.05):
-                full = self._overlay_calcium(full)
-        elif self.mode == 2:
-            full = self._syn_full
-        elif self.mode in self._extra_channels:
-            ch = self._extra_channels[self.mode]
-            if ch.get("image") is not None:
-                full = ch["image"]
-            elif ch.get("render_fn"):
-                full = ch["render_fn"]()
-            else:
-                full = self._bf_full
-        else:
-            full = self._bf_full
-
-        crop = self._crop_fov(full)
-        crop = self._apply_defocus(crop)
-        crop = self._apply_pipeline(crop, exposure)
-
-        return crop
+    def _apply_exposure(self, viewport, exposure, intensity):
+        """Neuron backend skips exposure scaling."""
+        return viewport
 
     def _overlay_calcium(self, base_map2):
         """Add calcium transient glow to MAP2 image (non-destructive).
@@ -1038,32 +1005,6 @@ class NeuronSim(SimBase):
         return factor
 
     # ── SLM optogenetics (ChR2) ──
-
-    def _map_slm_to_world(self, mask: np.ndarray) -> np.ndarray:
-        """Map viewport-space SLM mask to world-coordinate bool array."""
-        obj = self.current_objectiv
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov_world = fov_map.get(obj, min(512, self.width))
-
-        cx = int(self.camera_offset[0]) + self.viewport_width // 2
-        cy = int(self.camera_offset[1]) + self.viewport_height // 2
-
-        mask_fov = cv2.resize(
-            mask.astype(np.uint8), (fov_world, fov_world),
-            interpolation=cv2.INTER_NEAREST
-        ).astype(bool)
-
-        world_mask = np.zeros((self.height, self.width), dtype=bool)
-        half = fov_world // 2
-        x0 = max(0, min(cx - half, self.width - fov_world))
-        y0 = max(0, min(cy - half, self.height - fov_world))
-
-        wx1 = min(self.width, x0 + fov_world)
-        wy1 = min(self.height, y0 + fov_world)
-        mw = wx1 - x0
-        mh = wy1 - y0
-        world_mask[y0:y0 + mh, x0:x0 + mw] = mask_fov[:mh, :mw]
-        return world_mask
 
     def _apply_slm_stimulation(self):
         """ChR2 optogenetic stimulation: illuminated neurons fire.

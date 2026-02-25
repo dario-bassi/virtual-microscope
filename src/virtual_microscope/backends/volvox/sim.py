@@ -134,19 +134,16 @@ class VolvoxSim(SimBase):
         self._current_slm_mask = None
         self.phototaxis_strength = 0.15  # radians per step toward light
 
-        # Auto-step counter (Volvox uses its own counter for phototaxis gating)
-        self._snap_counter = 0
-
-        # Pipeline (single pipeline, not per-channel dict)
-        self._volvox_pipeline = OpticalPipeline(
+        # Optical pipeline — same pipeline for all channels
+        pipe = OpticalPipeline(
             psf_sigma=0.8,
             noise={"photon_scale": 3.0, "read_std": 2.0},
             rng_seed=seed + 1000,
         )
+        self._pipeline = {0: pipe, 1: pipe, 2: pipe}
 
         # For compatibility
         self._cells = []
-        self._skip_pipeline = False
 
     def _get_temperature(self) -> float:
         """Read temperature from the Temperature state device (°C)."""
@@ -601,37 +598,25 @@ class VolvoxSim(SimBase):
     def _render_for_mode(self, mode):
         return self._render_frame()
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
+    # ── SimBase template-method overrides ─────────────────────
 
-        # Cache SLM mask for phototaxis (applied in step_autonomous or auto_step block)
-        if mask is not None:
-            self._current_slm_mask = mask
+    def _handle_mask(self, mask):
+        """Cache SLM mask for phototaxis steering."""
+        self._current_slm_mask = mask
 
-        # Auto-step dynamics (swimming, rotation — gated by snaps_per_step)
-        if self.auto_step:
-            self._snap_counter += 1
-            if self._snap_counter >= self.snaps_per_step:
-                self._snap_counter = 0
-                # Apply phototaxis once per physics step (not per channel snap)
-                if self._current_slm_mask is not None and np.any(self._current_slm_mask):
-                    self._apply_phototaxis(scale=1.0)
-                self.step()
+    def _auto_step_tick(self):
+        """Apply phototaxis response before the physics step."""
+        if self._current_slm_mask is not None and np.any(self._current_slm_mask):
+            self._apply_phototaxis(scale=1.0)
+        super()._auto_step_tick()
 
-        # Render
-        img = self._render_frame()
+    def _crop_fov(self, full):
+        """No-op crop — Volvox renders directly at viewport resolution."""
+        return cv2.resize(full, (self.viewport_width, self.viewport_height))
 
-        # Apply optical pipeline
-        if not self._skip_pipeline:
-            img = self._volvox_pipeline.apply(img)
-
-        # Exposure scaling
-        img = self._apply_exposure(img, exposure, intensity)
-
-        # Return grayscale
-        return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    def _apply_defocus(self, img):
+        """No-op — Volvox handles per-cell depth visibility internally."""
+        return img
 
     def get_ground_truth(self) -> dict:
         """Return current colony state for grading."""

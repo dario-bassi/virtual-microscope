@@ -608,7 +608,7 @@ class CelegansSim(SimBase):
         f += self._noise_rng.normal(0, 3, f.shape).astype(np.float32)
         return np.clip(f, 0, 255).astype(np.uint8)
 
-    # ── Template-method hook ──
+    # ── Template-method hooks ──
 
     def _render_for_mode(self, mode):
         if mode == 0:
@@ -621,82 +621,12 @@ class CelegansSim(SimBase):
             return self._extra_channels[mode]["image"]
         return self._render_bf_full()
 
-    # ── snap_frame (SimulationBridge interface) ──
+    def _get_pad_bg(self) -> int:
+        """Background value for out-of-bounds padding.
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
-                   **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        # Render full-world image
-        if self.mode == 0:
-            full_img = self._render_bf_full()
-        elif self.mode == 1:
-            full_img = self._render_nuc_full()
-        elif self.mode == 2:
-            full_img = self._render_mem_full()
-        elif self.mode in self._extra_channels:
-            full_img = self._extra_channels[self.mode]["image"]
-        else:
-            full_img = self._render_bf_full()
-
-        # Extract viewport at camera_offset
-        ox = int(self.camera_offset[0])
-        oy = int(self.camera_offset[1])
-        vw, vh = self.viewport_width, self.viewport_height
-
-        x1 = max(0, ox)
-        y1 = max(0, oy)
-        x2 = min(self.width, ox + vw)
-        y2 = min(self.height, oy + vh)
-
-        bg_val = 200 if self.mode == 0 else 0
-        viewport = np.full((vh, vw, 3), bg_val, dtype=np.uint8)
-
-        dst_x1 = max(0, -ox)
-        dst_y1 = max(0, -oy)
-        src_w = x2 - x1
-        src_h = y2 - y1
-        if src_w > 0 and src_h > 0:
-            viewport[dst_y1:dst_y1 + src_h, dst_x1:dst_x1 + src_w] = (
-                full_img[y1:y2, x1:x2]
-            )
-
-        # Objective crop and rescale
-        viewport = self._crop_and_rescale(viewport)
-
-        # Defocus
-        viewport = self._apply_defocus(viewport)
-
-        # Optical pipeline, exposure
-        viewport = self._apply_pipeline(viewport, exposure)
-        viewport = self._apply_exposure(viewport, exposure, intensity)
-
-        # Return grayscale
-        return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
-
-    def _crop_and_rescale(self, img: np.ndarray) -> np.ndarray:
-        """Crop center for 20x/40x and rescale to viewport size."""
-        h, w = img.shape[:2]
-        if self.current_objectiv == 10:
-            return img
-        elif self.current_objectiv == 20:
-            crop_size = w // 2
-            x1 = (w - crop_size) // 2
-            y1 = (h - crop_size) // 2
-            cropped = img[y1:y1 + crop_size, x1:x1 + crop_size]
-            return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
-        elif self.current_objectiv == 40:
-            crop_size = w // 4
-            x1 = (w - crop_size) // 2
-            y1 = (h - crop_size) // 2
-            cropped = img[y1:y1 + crop_size, x1:x1 + crop_size]
-            return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
-        return img
+        Brightfield uses 200 (agar background), fluorescence uses 0.
+        """
+        return 200 if self.mode == 0 else 0
 
     def _apply_defocus(self, img: np.ndarray) -> np.ndarray:
         """Apply defocus blur based on focal plane distance."""

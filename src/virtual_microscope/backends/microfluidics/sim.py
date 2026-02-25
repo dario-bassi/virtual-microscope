@@ -79,9 +79,11 @@ class MicrofluidicsSim(SimBase):
         self.has_gradient = gradient
 
         # Optical pipeline per channel
-        self._pipeline_bf = OpticalPipeline.fluorescence()
-        self._pipeline_nuc = OpticalPipeline.fluorescence()
-        self._pipeline_mem = OpticalPipeline.fluorescence()
+        self._pipeline = {
+            0: OpticalPipeline.fluorescence(),
+            1: OpticalPipeline.fluorescence(),
+            2: OpticalPipeline.fluorescence(),
+        }
 
         # Perfusion (off by default)
         self._perfusion_enabled = False
@@ -780,40 +782,18 @@ class MicrofluidicsSim(SimBase):
             return self._render_gradient()
         return self._render_bf()
 
-    def snap_frame(self, mask=None, exposure=None, intensity=None,
-                   **kwargs) -> np.ndarray:
-        """Capture one frame from the current mode/objective."""
-        self._update_mode()
-        self._update_objectif()
 
-        # SLM-controlled cell release (before stepping)
-        if mask is not None:
-            self._apply_slm_release(mask)
+    def _handle_mask(self, mask):
+        """Release trapped cells illuminated by SLM mask."""
+        self._apply_slm_release(mask)
 
-        self._auto_step_tick()
-        self._snap_count += 1
+    def _apply_exposure(self, viewport, exposure, intensity):
+        """Microfluidics skips exposure scaling."""
+        return viewport
 
-        if self.mode == 1:
-            full = self._render_nuc()
-            crop = self._crop_fov(full)
-            crop = self._apply_defocus(crop)
-            pipe = self._pipeline_nuc
-            if pipe.photobleach_rate > 0:
-                return pipe.apply_with_bleach(crop, exposure_ms=exposure or 50)
-            return pipe.apply(crop)
-        elif self.mode == 2:
-            full = self._render_gradient()
-            crop = self._crop_fov(full)
-            crop = self._apply_defocus(crop)
-            pipe = self._pipeline_mem
-            if pipe.photobleach_rate > 0:
-                return pipe.apply_with_bleach(crop, exposure_ms=exposure or 50)
-            return pipe.apply(crop)
-        else:
-            full = self._render_bf()
-            crop = self._crop_fov(full)
-            crop = self._apply_defocus(crop)
-            return self._pipeline_bf.apply(crop)
+    def _apply_defocus(self, img):
+        """Microfluidics skips defocus blur."""
+        return img
 
     def get_ground_truth(self) -> dict:
         """Return ground truth for grading."""
@@ -899,10 +879,10 @@ class MicrofluidicsSim(SimBase):
         Args:
             rate: Fractional signal loss per exposure-ms.
         """
-        self._pipeline_nuc.photobleach_rate = rate
-        self._pipeline_mem.photobleach_rate = rate
+        self._pipeline[1].photobleach_rate = rate
+        self._pipeline[2].photobleach_rate = rate
 
     def reset_photobleaching(self):
         """Reset accumulated photobleaching."""
-        self._pipeline_nuc.reset_bleach()
-        self._pipeline_mem.reset_bleach()
+        self._pipeline[1].reset_bleach()
+        self._pipeline[2].reset_bleach()

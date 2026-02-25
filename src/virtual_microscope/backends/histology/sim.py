@@ -188,8 +188,9 @@ class HistologySim(SimBase):
         # RGB camera mode — snap_frame returns (H, W, 3) uint8
         self.rgb_mode = True
 
-        # Optical pipeline (single instance, not per-channel dict)
-        self._histo_pipeline = OpticalPipeline()
+        # Optical pipeline — shared across all modes (stained slide)
+        p = OpticalPipeline()
+        self._pipeline = {0: p, 1: p, 2: p}
 
         # Storage for nuclei positions and properties (world coordinates)
         self._nuclei_x = np.array([], dtype=np.float32)
@@ -1598,31 +1599,15 @@ class HistologySim(SimBase):
             return self._eos_full
         return self._bf_full
 
-    def snap_frame(self, mask=None, exposure=50, intensity=100, **kwargs):
-        """Return a viewport-cropped image of the current channel.
+    def _apply_exposure(self, viewport, exposure, intensity):
+        """Histology is a stained slide — no exposure scaling."""
+        return viewport
 
-        In RGB mode (rgb_mode=True), always returns (H, W, 3) uint8.
-        BF channel is full-color H&E; nucleus/eosin channels are
-        grayscale expanded to 3 channels.
-        """
-        self._update_mode()
-        self._update_objectif()
-
-        if self.mode == 1:
-            full = self._nuc_full
-        elif self.mode == 2:
-            full = self._eos_full
-        else:
-            full = self._bf_full
-
-        crop = self._crop_fov(full)
-        crop = self._histo_pipeline.apply(crop)
-
-        # Ensure 3-channel output for RGB mode
-        if self.rgb_mode and crop.ndim == 2:
-            crop = np.stack([crop, crop, crop], axis=-1)
-
-        return crop
+    def _finalize_output(self, viewport):
+        """Return RGB for H&E stain."""
+        if viewport.ndim == 2:
+            return np.stack([viewport, viewport, viewport], axis=-1)
+        return viewport
 
     # -- Ground truth --
 

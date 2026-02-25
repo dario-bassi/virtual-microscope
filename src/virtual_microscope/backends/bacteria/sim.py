@@ -220,30 +220,6 @@ class BacteriaSim(SimBase):
         self._phototaxis_enabled = True
         self._phototaxis_speed_factor = max(0.05, min(1.0, speed_factor))
 
-    def _map_slm_to_world(self, mask: np.ndarray) -> np.ndarray:
-        """Map viewport-space SLM mask to world-coordinate bool array."""
-        obj = self.current_objectiv
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov_world = fov_map.get(obj, min(512, self.width))
-
-        cx = int(self.camera_offset[0]) + self.viewport_width // 2
-        cy = int(self.camera_offset[1]) + self.viewport_height // 2
-
-        mask_fov = cv2.resize(
-            mask.astype(np.uint8), (fov_world, fov_world),
-            interpolation=cv2.INTER_NEAREST
-        ).astype(bool)
-
-        world_mask = np.zeros((self.height, self.width), dtype=bool)
-        half = fov_world // 2
-        x0 = max(0, min(cx - half, self.width - fov_world))
-        y0 = max(0, min(cy - half, self.height - fov_world))
-        wx1 = min(self.width, x0 + fov_world)
-        wy1 = min(self.height, y0 + fov_world)
-        mw, mh = wx1 - x0, wy1 - y0
-        world_mask[y0:y0 + mh, x0:x0 + mw] = mask_fov[:mh, :mw]
-        return world_mask
-
     def _emit_attractant(self, dt):
         """Emit attractant from all sources, diffuse, and decay."""
         yy, xx = np.mgrid[0:self.height, 0:self.width]

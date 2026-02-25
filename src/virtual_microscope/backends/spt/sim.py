@@ -43,7 +43,6 @@ SPT physics constraint (IMPORTANT for challenge design):
 
 import numpy as np
 import cv2
-from scipy.ndimage import gaussian_filter
 from virtual_microscope.base import SimBase
 from virtual_microscope.pipeline.optical_pipeline import OpticalPipeline
 
@@ -134,13 +133,15 @@ class SPTSim(SimBase):
         self._bleached = np.zeros(self.n_total, dtype=bool)
         self._intensity = self.rng.uniform(0.75, 1.0, self.n_total)
 
-        # Optical pipeline
-        self._pipeline_bf = OpticalPipeline(
-            psf_sigma=0.8, noise={"photon_scale": 6.0, "read_std": 2.0},
-            vignette=0.05, rng_seed=seed + 100)
-        self._pipeline_spt = OpticalPipeline(
-            psf_sigma=1.2, noise={"photon_scale": 1.5, "read_std": 1.5},
-            vignette=0.02, rng_seed=seed + 200)
+        # Optical pipeline (keyed by mode: 0=BF, 1=SPT/fluorescence)
+        self._pipeline = {
+            0: OpticalPipeline(
+                psf_sigma=0.8, noise={"photon_scale": 6.0, "read_std": 2.0},
+                vignette=0.05, rng_seed=seed + 100),
+            1: OpticalPipeline(
+                psf_sigma=1.2, noise={"photon_scale": 1.5, "read_std": 1.5},
+                vignette=0.02, rng_seed=seed + 200),
+        }
 
     def step(self, dt: float = 0.1) -> None:
         """Advance dynamics by dt seconds (default 100 ms for typical SPT)."""
@@ -223,27 +224,16 @@ class SPTSim(SimBase):
                               self._noise_rng.normal(0, max(self.z_drift_noise * np.sqrt(dt), 0)))
 
     def _render_for_mode(self, mode):
+        """Return full-resolution single-channel uint8 at internal resolution."""
         if mode == 0:
             return self._render_bf()
         return self._render_spt()
 
-    def snap_frame(self, mask=None, exposure: float = 50.0,
-                   intensity: float = 1.0, **kwargs) -> np.ndarray:
-        """Render current state. Returns uint8 (H, W, 3) image."""
-        self._update_mode()
-        self._update_objectif()
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        if self.mode == 0:
-            img = self._render_bf()
-        else:
-            img = self._render_spt(exposure=exposure)
-
-        return img
-
     def _render_bf(self) -> np.ndarray:
-        """Wide-field overview: all particles visible but lower contrast."""
+        """Wide-field overview: all particles visible but lower contrast.
+
+        Returns single-channel uint8 at internal resolution (_ih x _iw).
+        """
         s = self.internal_scale
         buf = np.zeros((self._ih, self._iw), dtype=np.float32)
         spot_sigma = s * 1.2  # wider PSF in widefield
@@ -269,14 +259,13 @@ class SPTSim(SimBase):
             r2 = (Xp - xi)**2 + (Yp - yi)**2
             buf[y_lo:y_hi, x_lo:x_hi] += brightness * np.exp(-r2 / (2 * spot_sigma**2))
 
-        # Clip and downsample
-        img_hi = np.clip(buf, 0, 255).astype(np.uint8)
-        cropped = self._crop_fov_internal(img_hi)
-        processed = self._pipeline_bf.apply(cropped.astype(np.float32), exposure_ms=100.0)
-        return cv2.merge([processed, processed, processed])
+        return np.clip(buf, 0, 255).astype(np.uint8)
 
-    def _render_spt(self, exposure: float = 50.0) -> np.ndarray:
-        """TIRF-like rendering: tight PSF, very low background, high SNR per spot."""
+    def _render_spt(self) -> np.ndarray:
+        """TIRF-like rendering: tight PSF, very low background, high SNR per spot.
+
+        Returns single-channel uint8 at internal resolution (_ih x _iw).
+        """
         s = self.internal_scale
         buf = np.zeros((self._ih, self._iw), dtype=np.float32)
         spot_sigma = s * 0.7  # tight PSF (diffraction-limited)
@@ -315,40 +304,13 @@ class SPTSim(SimBase):
             r2 = (Xp - xi)**2 + (Yp - yi)**2
             buf[y_lo:y_hi, x_lo:x_hi] += brightness * np.exp(-r2 / (2 * spot_sigma**2))
 
-        img_hi = np.clip(buf, 0, 255).astype(np.uint8)
-        cropped = self._crop_fov_internal(img_hi)
-        processed = self._pipeline_spt.apply(cropped.astype(np.float32),
-                                              exposure_ms=max(10.0, exposure))
-        return cv2.merge([processed, processed, processed])
+        return np.clip(buf, 0, 255).astype(np.uint8)
 
-    def _crop_fov_internal(self, img_hi: np.ndarray) -> np.ndarray:
-        """Crop internal-resolution buffer to FOV, return viewport-sized image."""
-        s = self.internal_scale
-        W, H = self.viewport_width, self.viewport_height
-        fov_map = {100: 64, 40: 128, 20: 256, 10: self.width}
-        fov_px = fov_map.get(self.current_objectiv, self.width)
-        fov_int = fov_px * s
-
-        # FOV center in world coords → internal coords
-        cx_world = int(self.camera_offset[0]) + W // 2
-        cy_world = int(self.camera_offset[1]) + H // 2
-        cx_int = cx_world * s
-        cy_int = cy_world * s
-
-        half = fov_int // 2
-        x0 = max(0, min(cx_int - half, self._iw - fov_int))
-        y0 = max(0, min(cy_int - half, self._ih - fov_int))
-
-        crop = img_hi[y0:y0 + fov_int, x0:x0 + fov_int]
-        if crop.shape[0] < fov_int or crop.shape[1] < fov_int:
-            canvas = np.zeros((fov_int, fov_int), dtype=np.uint8)
-            canvas[:crop.shape[0], :crop.shape[1]] = crop
-            crop = canvas
-
-        if crop.shape[0] != H or crop.shape[1] != W:
-            interp = cv2.INTER_NEAREST if fov_px < W else cv2.INTER_AREA
-            crop = cv2.resize(crop, (W, H), interpolation=interp)
-        return crop
+    def _finalize_output(self, viewport: np.ndarray) -> np.ndarray:
+        """Return single-channel grayscale output."""
+        if viewport.ndim == 3:
+            return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
+        return viewport
 
     def get_visible_particles(self, at_objective: int = None) -> list:
         """Return list of currently visible particle dicts for scoring."""

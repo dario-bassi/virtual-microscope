@@ -146,10 +146,11 @@ class BloodSmearSim(SimBase):
         self._rbc_edge = np.array([198, 140, 140], dtype=np.float32)  # darker pink rim
         self._plt_color = np.array([130, 85, 145], dtype=np.float32)  # purple granules
 
-        # Optical pipeline (single instance, not per-channel dict)
-        self._blood_pipeline = OpticalPipeline()
-        self._blood_pipeline.noise = {"photon_scale": 400, "read_noise": 2.0}
-        self._blood_pipeline.vignette = 0.06  # subtle vignetting
+        # Optical pipeline — shared across all modes (stained slide)
+        p = OpticalPipeline()
+        p.noise = {"photon_scale": 400, "read_noise": 2.0}
+        p.vignette = 0.06
+        self._pipeline = {0: p, 1: p, 2: p}
 
         # Generate cells
         self._generate_cells()
@@ -783,36 +784,15 @@ class BloodSmearSim(SimBase):
             return self._extra_channels[mode].get("image", self._bf_full)
         return self._bf_full
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
-        """Capture a frame — compatible with SimulationBridge.
+    def _apply_exposure(self, viewport, exposure, intensity):
+        """Blood smear is a stained slide — no exposure scaling."""
+        return viewport
 
-        Returns (H, W, 3) uint8 for BF (RGB Giemsa stain).
-        Nucleus and membrane channels return grayscale expanded to 3ch.
-        """
-        self._update_mode()
-        self._update_objectif()
-        self._snap_count += 1
-
-        if self.mode == 0:
-            full = self._bf_full
-        elif self.mode == 1:
-            full = self._nuc_full
-        elif self.mode == 2:
-            full = self._mem_full
-        else:
-            if self.mode in self._extra_channels:
-                full = self._extra_channels[self.mode].get("image", self._bf_full)
-            else:
-                full = self._bf_full
-
-        crop = self._crop_fov(full)
-        crop = self._blood_pipeline.apply(crop)
-
-        # Ensure 3-channel output for RGB mode
-        if self.rgb_mode and crop.ndim == 2:
-            crop = np.stack([crop, crop, crop], axis=-1)
-
-        return crop
+    def _finalize_output(self, viewport):
+        """Return RGB for Wright-Giemsa stain."""
+        if viewport.ndim == 2:
+            return np.stack([viewport, viewport, viewport], axis=-1)
+        return viewport
 
     def reset(self, seed: int = None):
         if seed is not None:

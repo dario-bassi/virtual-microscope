@@ -910,6 +910,7 @@ class VoronoiSim(SimBase):
         bleaching on clean images) and static mode (return pre-rendered images,
         with Z-layer compositing for nucleus channel when enabled).
         """
+        exposure = getattr(self, '_current_exposure', 50.0)
         if self.live_pipeline and self._bf_clean is not None:
             # Live pipeline: re-apply per-channel pipeline with bleaching
             pipelines = {0: self._bf_pipeline, 1: self._nuc_pipeline, 2: self._mem_pipeline}
@@ -917,12 +918,12 @@ class VoronoiSim(SimBase):
             wavelengths = {0: 0, 1: self.nuc_wavelength, 2: self.mem_wavelength}
             if mode in pipelines and mode in cleans:
                 return pipelines[mode].apply_with_bleach(
-                    cleans[mode].copy(), exposure_ms=50,
+                    cleans[mode].copy(), exposure_ms=exposure,
                     wavelength_nm=wavelengths.get(mode, 0))
             elif mode in self._extra_channels:
                 return self._extra_channels[mode]["image"]
             return self._bf_pipeline.apply_with_bleach(
-                self._bf_clean.copy(), exposure_ms=50)
+                self._bf_clean.copy(), exposure_ms=exposure)
         else:
             # Static mode (default): use pre-rendered images
             if mode == 0:
@@ -937,41 +938,11 @@ class VoronoiSim(SimBase):
                 return self._extra_channels[mode]["image"]
             return self._bf_full
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with ScatteredCellSim.snap_frame()."""
-        self._update_mode()
-        self._update_objectif()
-        self._snap_count += 1
-
-        # In live pipeline mode, pass actual exposure to apply_with_bleach
-        if self.live_pipeline and self._bf_clean is not None:
-            pipelines = {0: self._bf_pipeline, 1: self._nuc_pipeline, 2: self._mem_pipeline}
-            cleans = {0: self._bf_clean, 1: self._nuc_clean, 2: self._mem_clean}
-            wavelengths = {0: 0, 1: self.nuc_wavelength, 2: self.mem_wavelength}
-            if self.mode in pipelines and self.mode in cleans:
-                full_img = pipelines[self.mode].apply_with_bleach(
-                    cleans[self.mode].copy(), exposure_ms=exposure,
-                    wavelength_nm=wavelengths.get(self.mode, 0))
-            elif self.mode in self._extra_channels:
-                full_img = self._extra_channels[self.mode]["image"]
-            else:
-                full_img = self._bf_pipeline.apply_with_bleach(
-                    self._bf_clean.copy(), exposure_ms=exposure)
-        else:
-            full_img = self._render_for_mode(self.mode)
-
-        # Apply stage drift (cumulative XY shift)
+    def _crop_fov(self, full):
+        """Apply stage drift before cropping FOV."""
         if self.stage_drift_rate > 0 or self.stage_drift_noise > 0:
             self._apply_stage_drift()
-
-        # Crop FOV from internal-resolution buffer
-        viewport = self._crop_fov(full_img)
-
-        # Apply Z-defocus blur if focal plane != tissue plane
-        viewport = self._apply_defocus(viewport)
-
-        viewport = self._apply_exposure(viewport, exposure, intensity)
-        return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
+        return super()._crop_fov(full)
 
     def _apply_stage_drift(self):
         """Accumulate stage drift — called once per snap_frame().

@@ -390,29 +390,11 @@ class ZebrafishSim(SimBase):
             return self._render_cardiac_gfp()
         return self._render_bf()
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
-        self._update_mode()
-        self._update_objectif()
+    def _auto_step_tick(self):
+        """Read environmental controls, then auto-step."""
         self._read_temperature()
         self._read_anesthesia()
-
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        if self.mode == 0:
-            full = self._render_bf()
-        elif self.mode == 1:
-            full = self._render_vascular_gfp()
-        elif self.mode == 2:
-            full = self._render_cardiac_gfp()
-        else:
-            full = self._render_bf()
-
-        viewport = self._crop_fov(full)
-        viewport = self._apply_exposure(viewport, exposure, intensity)
-        viewport = self._apply_pipeline(viewport, exposure)
-
-        return viewport
+        super()._auto_step_tick()
 
     def _render_bf(self):
         """Brightfield: transparent embryo, high-contrast landmarks."""

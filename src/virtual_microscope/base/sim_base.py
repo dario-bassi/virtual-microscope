@@ -305,6 +305,7 @@ class SimBase(ABC):
         self._auto_step_tick()
         self._snap_count += 1
 
+        self._current_exposure = exposure
         full = self._render_for_mode(self.mode)
 
         viewport = self._crop_fov(full)
@@ -327,11 +328,39 @@ class SimBase(ABC):
         """
         ...
 
+    def _map_slm_to_world(self, mask: np.ndarray) -> np.ndarray:
+        """Map viewport-space SLM mask to world-coordinate bool array."""
+        obj = self.current_objectiv
+        fov_map = {100: 64, 40: 128, 20: 256}
+        fov_world = fov_map.get(obj, min(512, self.width))
+
+        cx = int(self.camera_offset[0]) + self.viewport_width // 2
+        cy = int(self.camera_offset[1]) + self.viewport_height // 2
+
+        mask_fov = cv2.resize(
+            mask.astype(np.uint8), (fov_world, fov_world),
+            interpolation=cv2.INTER_NEAREST
+        ).astype(bool)
+
+        world_mask = np.zeros((self.height, self.width), dtype=bool)
+        half = fov_world // 2
+        x0 = max(0, min(cx - half, self.width - fov_world))
+        y0 = max(0, min(cy - half, self.height - fov_world))
+
+        wx1 = min(self.width, x0 + fov_world)
+        wy1 = min(self.height, y0 + fov_world)
+        mw = wx1 - x0
+        mh = wy1 - y0
+        world_mask[y0:y0 + mh, x0:x0 + mw] = mask_fov[:mh, :mw]
+        return world_mask
+
     def _handle_mask(self, mask: np.ndarray) -> None:
         """Process an SLM / stimulation mask.  Override in subclasses."""
 
     def _finalize_output(self, viewport: np.ndarray) -> np.ndarray:
         """Convert viewport to final output format (BGR → grayscale)."""
+        if viewport.ndim == 2:
+            return viewport
         return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
 
     def step(self, dt: float = 1.0):

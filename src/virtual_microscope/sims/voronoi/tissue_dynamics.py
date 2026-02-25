@@ -1326,74 +1326,24 @@ class DynamicVoronoiSim(VoronoiSim):
         self._nuc_full = None
         self._mem_full = None
 
-    # ---- Override snap_frame for lazy rendering ----
+    # ---- Template method overrides for SimBase pipeline ----
 
-    def _map_slm_to_world(self, mask: np.ndarray) -> np.ndarray:
-        """Map a viewport-space SLM mask to world coordinates.
+    def _handle_mask(self, mask: np.ndarray) -> None:
+        """Map SLM mask to world coordinates for optogenetic stimulation.
 
-        The SLM mask is 512x512 (viewport pixels). At 10x the viewport maps
-        1:1 to world pixels. At higher magnifications, the viewport covers a
-        smaller world region, so the mask must be placed at the correct FOV
-        position in world space.
-
-        Returns a bool array of shape (self.height, self.width).
+        Illuminated cells migrate faster during subsequent step() calls.
+        Also drives gene induction, photoconversion, and laser ablation.
         """
-        # Determine FOV in world pixels (same logic as _crop_fov)
-        obj = self.current_objectiv
-        if obj == 100:
-            fov_world = 64
-        elif obj == 40:
-            fov_world = 128
-        elif obj == 20:
-            fov_world = 256
-        else:
-            fov_world = min(512, self.width)
-
-        # Stage center in world coords (matching _crop_fov, excluding drift)
-        cx = int(self.camera_offset[0]) + self.viewport_width // 2
-        cy = int(self.camera_offset[1]) + self.viewport_height // 2
-
-        # Resize SLM mask from viewport (512x512) to FOV world pixels
-        mask_fov = cv2.resize(
-            mask.astype(np.uint8), (fov_world, fov_world),
-            interpolation=cv2.INTER_NEAREST
-        ).astype(bool)
-
-        # Create world-sized mask with SLM pattern placed at FOV position
-        world_mask = np.zeros((self.height, self.width), dtype=bool)
-        half = fov_world // 2
-        x0 = max(0, min(cx - half, self.width - fov_world))
-        y0 = max(0, min(cy - half, self.height - fov_world))
-
-        # Clip to world bounds
-        wx1 = min(self.width, x0 + fov_world)
-        wy1 = min(self.height, y0 + fov_world)
-        mw = wx1 - x0
-        mh = wy1 - y0
-        world_mask[y0:y0 + mh, x0:x0 + mw] = mask_fov[:mh, :mw]
-
-        return world_mask
-
-    def snap_frame(self, mask=None, **kwargs):
-        """Snap frame with lazy re-rendering after dynamics.
-
-        When auto_step=True, dynamics advance every `snaps_per_step` calls.
-        This lets agents acquire multiple channels per timepoint (e.g. BF +
-        membrane) before the simulation steps forward.
-
-        If an SLM mask is provided, illuminated cells migrate faster during
-        subsequent step() calls (optogenetic stimulation).
-        """
-        # Update objective BEFORE mapping SLM mask (otherwise we use stale
-        # magnification from previous snap)
-        self._update_objectif()
-
-        # Map SLM mask to world coordinates (FOV-aware)
-        if mask is not None and np.any(mask):
+        if np.any(mask):
             self._stim_mask = self._map_slm_to_world(mask)
         else:
             self._stim_mask = None
 
+    def _auto_step_tick(self):
+        """No-op: DynamicVoronoiSim steps AFTER rendering, not before."""
+
+    def _render_for_mode(self, mode):
+        """Lazy re-render tissue on cache miss, then delegate to VoronoiSim."""
         if self._bf_full is None:
             self._render_full_tissue()
             # Re-render dynamic extra channels (translocation GFP)
@@ -1403,9 +1353,20 @@ class DynamicVoronoiSim(VoronoiSim):
             # Re-render extension hook channels (FUCCI, lysosomes, etc.)
             for mode_id, render_fn in self._render_hooks.items():
                 self._extra_channels[mode_id]["image"] = render_fn()
-        result = super().snap_frame(mask=mask, **kwargs)
+        return super()._render_for_mode(mode)
 
-        # Auto-advance dynamics after N snaps
+    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
+        """Thin wrapper: run full template pipeline, then post-render step.
+
+        DynamicVoronoiSim advances dynamics AFTER rendering so that
+        multi-channel acquisitions (e.g. BF + membrane) within one
+        timepoint see the same tissue state.
+        """
+        result = super().snap_frame(
+            mask=mask, exposure=exposure, intensity=intensity, **kwargs,
+        )
+
+        # Auto-advance dynamics after N snaps (post-render)
         if self.auto_step:
             self._snap_counter += 1
             if self._snap_counter >= self.snaps_per_step:

@@ -10,7 +10,6 @@ Usage via SimulationBridge:
     bridge = SimulationBridge(sim)
 """
 
-import time
 import numpy as np
 import cv2
 from virtual_microscope.base import SimBase
@@ -385,7 +384,7 @@ class ReactionDiffusionSim(SimBase):
         f += self._noise_rng.normal(0, 2, f.shape).astype(np.float32)
         return np.clip(f, 0, 255).astype(np.uint8)
 
-    # ── Template-method hook ──
+    # ── Template-method hooks ──
 
     def _render_for_mode(self, mode):
         if mode == 0:
@@ -398,104 +397,44 @@ class ReactionDiffusionSim(SimBase):
             return self._extra_channels[mode]["image"]
         return self._render_bf_full()
 
-    # ── snap_frame (SimulationBridge interface) ──
-
     def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
                    **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
+        """Clear SLM stimulation each frame, then delegate to SimBase pipeline.
 
+        The stim mask is ephemeral: active only for the snap in which it is
+        supplied. Without this reset, a previously sent mask would persist
+        across subsequent snaps that do not provide one.
+        """
+        if mask is None:
+            self._stim_mask = None
+        return super().snap_frame(mask=mask, exposure=exposure,
+                                  intensity=intensity, **kwargs)
+
+    def _handle_mask(self, mask):
+        """Apply SLM optogenetic mask: downsample to grid and store for step().
+
+        Reads SLM-Mode device to determine excite vs inhibit, then resizes the
+        viewport-space mask to grid resolution for use in the PDE solver.
+        """
         # Read SLM-Mode device if present (0=excite, 1=inhibit)
         if "SLM-Mode" in self.state_devices:
             mode_dev = self.state_devices["SLM-Mode"]
             label = mode_dev.get("label", mode_dev.get("Label", "excite"))
             self._slm_mode = 1 if label == "inhibit" else 0
 
-        # Handle SLM stimulation mask
-        if mask is not None:
-            # Resize mask to grid size if needed
-            if mask.shape != (self.height, self.width):
-                mask_resized = cv2.resize(
-                    mask.astype(np.uint8), (self.width, self.height),
-                    interpolation=cv2.INTER_NEAREST
-                ).astype(bool)
-            else:
-                mask_resized = mask.astype(bool)
-            self._stim_mask = mask_resized
+        # Resize mask to grid size if needed
+        if mask.shape != (self.height, self.width):
+            mask_resized = cv2.resize(
+                mask.astype(np.uint8), (self.width, self.height),
+                interpolation=cv2.INTER_NEAREST
+            ).astype(bool)
         else:
-            self._stim_mask = None
+            mask_resized = mask.astype(bool)
+        self._stim_mask = mask_resized
 
-        # Step simulation at the START of each snap cycle
-        self._auto_step_tick()
-        self._snap_count += 1
-
-        # Render
-        if self.mode == 0:
-            full_img = self._render_bf_full()
-        elif self.mode == 1:
-            full_img = self._render_nuc_full()
-        elif self.mode == 2:
-            full_img = self._render_mem_full()
-        elif self.mode in self._extra_channels:
-            full_img = self._extra_channels[self.mode]["image"]
-        else:
-            full_img = self._render_bf_full()
-
-        # Extract viewport
-        ox = int(self.camera_offset[0])
-        oy = int(self.camera_offset[1])
-        vw, vh = self.viewport_width, self.viewport_height
-
-        x1 = max(0, ox)
-        y1 = max(0, oy)
-        x2 = min(self.width, ox + vw)
-        y2 = min(self.height, oy + vh)
-
-        bg_val = 120 if self.mode == 0 else 0
-        viewport = np.full((vh, vw, 3), bg_val, dtype=np.uint8)
-
-        dst_x1 = max(0, -ox)
-        dst_y1 = max(0, -oy)
-        src_w = x2 - x1
-        src_h = y2 - y1
-        if src_w > 0 and src_h > 0:
-            viewport[dst_y1:dst_y1 + src_h, dst_x1:dst_x1 + src_w] = (
-                full_img[y1:y2, x1:x2]
-            )
-
-        # Objective crop and rescale
-        viewport = self._crop_and_rescale(viewport)
-
-        # Defocus
-        viewport = self._apply_defocus(viewport)
-
-        # Optical pipeline (PSF, noise, vignetting, bleaching)
-        viewport = self._apply_pipeline(viewport, exposure)
-
-        # Exposure scaling
-        viewport = self._apply_exposure(viewport, exposure, intensity)
-
-        return cv2.cvtColor(viewport, cv2.COLOR_BGR2GRAY)
-
-    def _crop_and_rescale(self, img: np.ndarray) -> np.ndarray:
-        """Crop center for 20x/40x and rescale to viewport size."""
-        h, w = img.shape[:2]
-        if self.current_objectiv == 10:
-            return img
-        elif self.current_objectiv == 20:
-            crop_size = w // 2
-            x1 = (w - crop_size) // 2
-            y1 = (h - crop_size) // 2
-            cropped = img[y1:y1 + crop_size, x1:x1 + crop_size]
-            return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
-        elif self.current_objectiv == 40:
-            crop_size = w // 4
-            x1 = (w - crop_size) // 2
-            y1 = (h - crop_size) // 2
-            cropped = img[y1:y1 + crop_size, x1:x1 + crop_size]
-            return cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
-        return img
+    def _get_pad_bg(self) -> int:
+        """Background for out-of-bounds padding: 120 for BF, 0 for fluoro."""
+        return 120 if self.mode == 0 else 0
 
     def reset(self, seed: int = None):
         """Reset to initial conditions."""

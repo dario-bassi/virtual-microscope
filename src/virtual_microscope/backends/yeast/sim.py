@@ -64,10 +64,11 @@ class YeastSim(SimBase):
         self.division_time = division_time  # mean time steps between divisions
         self.gfp_expression = True  # all cells express GFP
 
-        # Optical pipeline (single instance, not per-channel dict)
-        self._yeast_pipeline = OpticalPipeline()
-        self._yeast_pipeline.noise = {"photon_scale": 200, "read_noise": 3.0}
-        self._yeast_pipeline.vignette = 0.08
+        # Optical pipeline (shared across all channels)
+        p = OpticalPipeline()
+        p.noise = {"photon_scale": 200, "read_noise": 3.0}
+        p.vignette = 0.08
+        self._pipeline = {0: p, 1: p, 2: p}
 
         # ── Cell state arrays ──
         margin = 30
@@ -764,43 +765,6 @@ class YeastSim(SimBase):
         elif mode in self._extra_channels:
             return self._extra_channels[mode].get("image", self._bf_full)
         return self._bf_full
-
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
-                   **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-
-        # Auto-step
-        self._auto_step_tick()
-
-        # Lazy re-render if dirty (dynamics changed state)
-        if self._dirty:
-            self._render_full()
-            self._dirty = False
-
-        self._snap_count += 1
-
-        # Select channel
-        if self.mode == 0:
-            full = self._bf_full
-        elif self.mode == 1:
-            full = self._nuc_full
-        elif self.mode == 2:
-            full = self._mem_full
-        else:
-            if self.mode in self._extra_channels:
-                full = self._extra_channels[self.mode].get("image", self._bf_full)
-            else:
-                full = self._bf_full
-
-        crop = self._crop_fov(full)
-        crop = self._apply_defocus(crop)
-        if self._yeast_pipeline.photobleach_rate > 0 and self.mode > 0:
-            crop = self._yeast_pipeline.apply_with_bleach(crop, exposure_ms=exposure)
-        else:
-            crop = self._yeast_pipeline.apply(crop)
-        return crop
 
     # ── Ground truth ──
 

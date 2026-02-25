@@ -135,7 +135,8 @@ class DictyosteliumSim(SimBase):
         self._slm_excitation_strength = 5.0  # cAMP units per illuminated step
 
         # ── Optical pipeline ──
-        self._pipeline = OpticalPipeline()
+        p = OpticalPipeline()
+        self._pipeline = {0: p, 1: p, 2: p}
 
     def _select_pacemakers(self, n: int) -> np.ndarray:
         """Select well-spaced pacemaker cells using farthest-first."""
@@ -170,40 +171,6 @@ class DictyosteliumSim(SimBase):
         if temp > 30:
             factor *= max(0.1, 1.0 - (temp - 30) * 0.15)
         return factor
-
-    # ── SLM mapping ──
-
-    def _map_slm_to_world(self, mask: np.ndarray) -> np.ndarray:
-        """Map viewport-space SLM mask to world-coordinate bool array."""
-        obj = self.current_objectiv
-        if obj == 100:
-            fov_world = 64
-        elif obj == 40:
-            fov_world = 128
-        elif obj == 20:
-            fov_world = 256
-        else:
-            fov_world = min(512, self.width)
-
-        cx = int(self.camera_offset[0]) + self.viewport_width // 2
-        cy = int(self.camera_offset[1]) + self.viewport_height // 2
-
-        mask_fov = cv2.resize(
-            mask.astype(np.uint8), (fov_world, fov_world),
-            interpolation=cv2.INTER_NEAREST
-        ).astype(bool)
-
-        world_mask = np.zeros((self.height, self.width), dtype=bool)
-        half = fov_world // 2
-        x0 = max(0, min(cx - half, self.width - fov_world))
-        y0 = max(0, min(cy - half, self.height - fov_world))
-
-        wx1 = min(self.width, x0 + fov_world)
-        wy1 = min(self.height, y0 + fov_world)
-        mw = wx1 - x0
-        mh = wy1 - y0
-        world_mask[y0:y0 + mh, x0:x0 + mw] = mask_fov[:mh, :mw]
-        return world_mask
 
     def _apply_slm_excitation(self):
         """Excite cells under SLM illumination (bPAC optogenetics).
@@ -907,40 +874,19 @@ class DictyosteliumSim(SimBase):
             return self._render_camp()
         return self._render_darkfield()
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0,
-                   **kwargs) -> np.ndarray:
-        """Capture a frame — compatible with SimulationBridge."""
-        self._update_mode()
-        self._update_objectif()
-        self._read_temperature()
-
-        # Map SLM mask to world coords (bPAC optogenetics)
-        if mask is not None and np.any(mask):
+    def _handle_mask(self, mask):
+        """Map SLM mask to world coordinates for bPAC optogenetics."""
+        if np.any(mask):
             self._slm_mask = self._map_slm_to_world(mask)
         else:
             self._slm_mask = None
 
-        # Auto-step
+    def _auto_step_tick(self):
+        """Read temperature, then step with auto_step_dt."""
+        self._read_temperature()
         if (self.auto_step and self._snap_count > 0
                 and self._snap_count % self.snaps_per_step == 0):
             self.step(self.auto_step_dt if self.fixed_dt <= 0 else self.fixed_dt)
-
-        self._snap_count += 1
-
-        if self.mode == 1:
-            full = self._render_gfp()
-        elif self.mode == 2:
-            full = self._render_camp()
-        else:
-            full = self._render_darkfield()
-
-        crop = self._crop_fov(full)
-        crop = self._apply_defocus(crop)
-        if self._pipeline.photobleach_rate > 0 and self.mode > 0:
-            crop = self._pipeline.apply_with_bleach(crop, exposure_ms=kwargs.get("exposure", exposure))
-        else:
-            crop = self._pipeline.apply(crop)
-        return crop
 
     # ── Ground truth ──
 

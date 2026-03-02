@@ -11,7 +11,7 @@ A fully simulated microscope platform that generates realistic microscopy images
 | ![blood_smear](docs/gallery/frames/blood_smear_01.png) | ![wound_healing](docs/gallery/frames/wound_healing_01.png) | ![malaria](docs/gallery/frames/malaria_01.png) |
 | **blood_smear** | **wound_healing** | **malaria** |
 
-See the [full gallery](docs/gallery.md) for all 34 backends.
+See the [full gallery](docs/gallery.md) for all 35 backends.
 
 ## Installation
 
@@ -153,6 +153,17 @@ core.setProperty("NewExperiment", "Action", "New")
 | `yeast` | Budding yeast (*S. cerevisiae*) | yes | `phase-contrast`, `Calcofluor-White`, `GFP-reporter` |
 | `zebrafish` | Zebrafish embryo, transgenic reporters | yes | `brightfield`, `flk1-GFP`, `myl7-mCherry` |
 
+Each backend embeds rich documentation in its `BACKEND_INFO` dict (specimen, modality, experiment guide, device effects, key parameters). Access it programmatically:
+
+```python
+from virtual_microscope.backends import describe_backends
+
+info = describe_backends()["bacteria"]
+print(info["experiment_guide"])  # multi-sentence experiment walkthrough
+print(info["device_effects"])    # {"SLM": "...", "Temperature": "..."}
+print(info["key_parameters"])    # {"n_cells": "Initial cell count (default 30)", ...}
+```
+
 ## Adding a Backend
 
 1. **Create `sim.py`** inheriting from `SimBase`:
@@ -174,21 +185,37 @@ class MySim(SimBase):
         )
         # ... your specimen-specific state ...
 
-    def snap_frame(self, mask=None, exposure=50.0, intensity=1.0, **kwargs):
-        self._update_mode()
-        self._update_objectif()
+    def _render_for_mode(self, mode):
         # render your specimen into a (self._ih, self._iw) buffer
-        # then use self._crop_fov(), self._apply_defocus(), etc.
-        return viewport
+        # mode is the integer channel index from mode_map
+        # return a numpy array (grayscale or RGB)
+        return frame
 
     def step(self, dt=1.0):
         # advance dynamics (called by RealtimeEngine if continuous=True)
         ...
 ```
 
-2. **Create `__init__.py`**:
+2. **Create `__init__.py`** with `BACKEND_INFO` and setup function:
 
 ```python
+BACKEND_INFO = {
+    "description": "One-line summary of the backend.",
+    "channels": ["brightfield", "GFP", "DAPI"],
+    "continuous": True,
+    "extra_devices": ["SLM", "Temperature"],
+    "specimen": "Cell type or sample description",
+    "modality": "Imaging modality (e.g. Phase-contrast + epifluorescence)",
+    "experiment_guide": "Multi-sentence guide explaining what the user can do.",
+    "device_effects": {
+        "SLM": "What the SLM does in this backend",
+        "Temperature": "What temperature control does",
+    },
+    "key_parameters": {
+        "n_cells": "Initial cell count (default 50)",
+    },
+}
+
 from pathlib import Path
 from virtual_microscope._init_standard import load_cfg
 
@@ -196,7 +223,7 @@ def create_sim(**kwargs):
     from .sim import MySim
     return MySim(**kwargs)
 
-def setup_my_backend_microscope(**kwargs):
+def setup_my_backend(**kwargs):
     sim = create_sim(**kwargs)
     core = load_cfg(sim, Path(__file__).parent / "my_backend.cfg")
     return core, sim
@@ -252,7 +279,7 @@ src/virtual_microscope/
 │   ├── lysosome/
 │   │   ├── sim.py               #   LysosomeSim(DynamicVoronoiSim) — LysoTracker
 │   │   └── ...
-│   ├── ...                      # 34 backends total
+│   ├── ...                      # 35 backends total
 │   └── zebrafish/
 ├── devices/
 │   ├── sim_server.py            # SimServer — main pymmcore device adapter

@@ -5,6 +5,24 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "membrane"],
     "continuous": True,
     "extra_devices": ["Temperature", "Perfusion"],
+    "specimen": "Epithelial cells with LysoTracker-stained lysosomes",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Watch LysoTracker-stained lysosomes undergoing Brownian diffusion inside "
+        "epithelial cells. Track individual puncta over time for single-particle "
+        "analysis. Temperature modulates diffusion rate; perfusion delivers "
+        "agents that alter lysosomal trafficking (e.g. chloroquine, bafilomycin)."
+    ),
+    "device_effects": {
+        "Temperature": "Higher temperature increases lysosomal diffusion rate",
+        "Perfusion": "Delivers agents that alter lysosomal pH or trafficking (chloroquine, bafilomycin)",
+    },
+    "key_parameters": {
+        "n_cells": "Number of cells (default 20)",
+        "n_lyso_min": "Minimum lysosomes per cell (default 5)",
+        "n_lyso_max": "Maximum lysosomes per cell (default 20)",
+        "diffusion_rate": "Brownian diffusion coefficient (default 0.3)",
+    },
 }
 
 from pathlib import Path

@@ -5,6 +5,22 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "membrane"],
     "continuous": True,
     "extra_devices": ["Temperature", "Perfusion"],
+    "specimen": "Hepatocytes with intracellular lipid droplets",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Observe intracellular lipid droplets stained with BODIPY in a hepatocyte "
+        "monolayer. A configurable fraction of cells are steatotic (fatty) with "
+        "abundant large droplets. Track lipid accumulation over time. Temperature "
+        "affects metabolic rate; perfusion delivers lipogenic or lipolytic drugs."
+    ),
+    "device_effects": {
+        "Temperature": "Higher temperature increases lipid metabolism rate",
+        "Perfusion": "Delivers oleic acid (lipogenic) or forskolin (lipolytic) to modulate steatosis",
+    },
+    "key_parameters": {
+        "n_cells": "Number of hepatocytes (default 25)",
+        "steatotic_fraction": "Fraction of steatotic cells (default 0.4)",
+    },
 }
 
 from pathlib import Path

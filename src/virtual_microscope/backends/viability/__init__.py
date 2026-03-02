@@ -5,6 +5,23 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "membrane"],
     "continuous": True,
     "extra_devices": ["Temperature", "Perfusion"],
+    "specimen": "Epithelial cells with live/dead viability staining",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Assess cell viability using Calcein-AM (live, green) and Ethidium "
+        "homodimer-1 (dead, red) dual staining. A configurable fraction of cells "
+        "are dead at baseline. Temperature and perfusion can modulate viability "
+        "over time. Useful for training live/dead classification and cytotoxicity "
+        "quantification pipelines."
+    ),
+    "device_effects": {
+        "Temperature": "Extreme temperatures (≥45°C) induce cell death over time",
+        "Perfusion": "Delivers cytotoxic agents that reduce viability",
+    },
+    "key_parameters": {
+        "n_cells": "Number of cells (default 60)",
+        "live_fraction": "Initial fraction of live cells (default 0.85)",
+    },
 }
 
 from pathlib import Path

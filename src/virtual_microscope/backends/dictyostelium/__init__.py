@@ -5,6 +5,24 @@ BACKEND_INFO = {
     "channels": ["dark-field", "GFP", "cAMP-reporter"],
     "continuous": True,
     "extra_devices": ["SLM", "Temperature"],
+    "specimen": "Dictyostelium discoideum (social amoeba)",
+    "modality": "Dark-field + epifluorescence",
+    "experiment_guide": (
+        "Watch Dictyostelium amoebae aggregate via cAMP chemotaxis. Pacemaker "
+        "cells emit periodic cAMP pulses that are relayed outward as spiral "
+        "waves, guiding cells toward aggregation centres. Use SLM to create "
+        "artificial cAMP sources and redirect streaming. Temperature modulates "
+        "relay kinetics and aggregation speed."
+    ),
+    "device_effects": {
+        "SLM": "Creates artificial cAMP point sources in illuminated regions",
+        "Temperature": "Modulates cAMP relay kinetics and cell motility speed",
+    },
+    "key_parameters": {
+        "n_cells": "Number of amoebae (default 100)",
+        "n_pacemakers": "Number of pacemaker cells (default 3)",
+        "relay_radius": "cAMP relay radius in pixels (default 40)",
+    },
 }
 
 from pathlib import Path

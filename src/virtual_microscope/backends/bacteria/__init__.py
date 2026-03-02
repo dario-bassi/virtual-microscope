@@ -5,6 +5,23 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "GFP", "DAPI"],
     "continuous": True,
     "extra_devices": ["SLM", "Temperature"],
+    "specimen": "E. coli (rod-shaped bacteria)",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Seed a population of bacteria and watch them grow and divide. Use "
+        "phase-contrast for morphology and GFP/DAPI for fluorescence markers. "
+        "Apply SLM masks to trigger optogenetic stimulation in specific regions. "
+        "Raise temperature to accelerate growth or cool to 4°C to arrest "
+        "division."
+    ),
+    "device_effects": {
+        "SLM": "Activates bPAC optogenetic tool in illuminated cells, increasing cAMP",
+        "Temperature": "Growth rate scales with temperature; 4°C arrests division, 42°C is heat shock",
+    },
+    "key_parameters": {
+        "n_cells": "Initial cell count (default 30)",
+        "world_size": "World size in pixels (default 512)",
+    },
 }
 
 from pathlib import Path

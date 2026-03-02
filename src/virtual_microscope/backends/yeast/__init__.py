@@ -5,6 +5,23 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "Calcofluor-White", "GFP-reporter"],
     "continuous": False,
     "extra_devices": ["Temperature"],
+    "specimen": "Saccharomyces cerevisiae (budding yeast)",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Observe budding yeast cells with Calcofluor-White cell-wall staining and "
+        "a GFP reporter. Cells divide by budding at a configurable rate. "
+        "Temperature affects growth rate — optimal at 30°C, arrested below 4°C or "
+        "above 42°C. Useful for training budding-index and colony-counting "
+        "algorithms."
+    ),
+    "device_effects": {
+        "Temperature": "Growth rate is temperature-dependent; optimal at 30°C, lethal above 42°C",
+    },
+    "key_parameters": {
+        "n_cells": "Initial cell count (default 200)",
+        "world_size": "World size in pixels (default 512)",
+        "division_time": "Mean division time in steps (default 15.0)",
+    },
 }
 
 from pathlib import Path

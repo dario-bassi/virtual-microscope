@@ -5,6 +5,25 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "membrane"],
     "continuous": True,
     "extra_devices": ["SLM", "Temperature", "Perfusion"],
+    "specimen": "Epithelial cells with G3BP1-GFP stress granule reporter",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Watch stress granule formation and dissolution in response to cellular "
+        "stress. G3BP1-GFP foci appear under heat shock, oxidative stress, or "
+        "SLM-triggered optogenetic stress. Track foci count and size over time. "
+        "Temperature induces heat-shock stress; perfusion delivers arsenite or "
+        "other stressors."
+    ),
+    "device_effects": {
+        "SLM": "Triggers localised stress response in illuminated cells, inducing granule formation",
+        "Temperature": "Heat shock (≥43°C) induces rapid stress granule assembly",
+        "Perfusion": "Delivers chemical stressors (arsenite, thapsigargin) that trigger granule formation",
+    },
+    "key_parameters": {
+        "n_cells": "Number of cells (default 30)",
+        "formation_rate": "Stress granule formation rate (default 0.25)",
+        "dissolution_rate": "Stress granule dissolution rate (default 0.12)",
+    },
 }
 
 from pathlib import Path

@@ -5,6 +5,25 @@ BACKEND_INFO = {
     "channels": ["brightfield", "chlorophyll", "pherophorin"],
     "continuous": True,
     "extra_devices": ["SLM", "Temperature"],
+    "specimen": "Volvox carteri (colonial green alga)",
+    "modality": "Brightfield + epifluorescence",
+    "experiment_guide": (
+        "Watch a Volvox colony swim and rotate. Somatic cells on the surface beat "
+        "flagella for locomotion; large gonidia inside develop into daughter "
+        "colonies. Chlorophyll autofluorescence labels all cells; pherophorin "
+        "marks the extracellular matrix. SLM phototaxis steers the colony toward "
+        "or away from light."
+    ),
+    "device_effects": {
+        "SLM": "Directional light cue that steers phototactic swimming toward illuminated region",
+        "Temperature": "Affects flagellar beat frequency and swimming speed",
+    },
+    "key_parameters": {
+        "n_somatic": "Number of somatic cells (default 300)",
+        "n_gonidia": "Number of reproductive gonidia (default 4)",
+        "colony_radius": "Colony radius in pixels (default 60)",
+        "swim_speed": "Swimming speed in px/step (default 3.0)",
+    },
 }
 
 from pathlib import Path

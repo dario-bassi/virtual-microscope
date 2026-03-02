@@ -5,6 +5,23 @@ BACKEND_INFO = {
     "channels": ["brightfield", "flk1-GFP", "myl7-mCherry"],
     "continuous": True,
     "extra_devices": ["Temperature", "Anesthesia"],
+    "specimen": "Zebrafish embryo (Danio rerio, 48 hpf)",
+    "modality": "Brightfield + epifluorescence",
+    "experiment_guide": (
+        "Observe a zebrafish embryo tail region with a beating heart and "
+        "circulating red blood cells. flk1-GFP labels vasculature endothelium; "
+        "myl7-mCherry marks cardiac muscle. Temperature affects heart rate and "
+        "development speed. Anesthesia (tricaine) slows or stops the heartbeat "
+        "for stable imaging."
+    ),
+    "device_effects": {
+        "Temperature": "Heart rate and development speed scale with temperature; optimal at 28°C",
+        "Anesthesia": "Tricaine (MS-222) progressively slows heartbeat and suppresses movement",
+    },
+    "key_parameters": {
+        "n_rbc": "Number of circulating red blood cells (default 30)",
+        "cardiac_freq": "Cardiac beating frequency in Hz (default 2.5)",
+    },
 }
 
 from pathlib import Path

@@ -5,6 +5,19 @@ BACKEND_INFO = {
     "channels": [],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "96-well microplate (absorbance / fluorescence)",
+    "modality": "Plate reader heatmap",
+    "experiment_guide": (
+        "Simulates a microplate reader producing well-based absorbance or "
+        "fluorescence readings displayed as a heatmap. Choose from assay presets "
+        "(viability, ELISA, Bradford, kinase, etc.) that set appropriate "
+        "wavelengths and dose–response curves. Useful for training plate-layout "
+        "analysis and hit-calling pipelines."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "assay_type": "Assay preset: 'viability', 'elisa', 'bradford', etc. (default 'viability')",
+    },
 }
 
 from virtual_microscope.backends.plate_reader.sim import PlateReaderSim

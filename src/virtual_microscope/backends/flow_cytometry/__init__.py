@@ -5,6 +5,20 @@ BACKEND_INFO = {
     "channels": ["scatter", "FITC", "PE"],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "Cell suspension (multi-population)",
+    "modality": "Flow cytometry scatter + fluorescence",
+    "experiment_guide": (
+        "Simulates a flow cytometer acquiring scatter and fluorescence events "
+        "from a mixed cell population. Each snap adds a batch of events to the "
+        "dot-plot image. Observe distinct populations in FSC/SSC scatter and "
+        "FITC/PE fluorescence channels. Useful for training gating and clustering "
+        "algorithms."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_total": "Total events to acquire (default 10000)",
+        "events_per_snap": "Events added per snap (default 100)",
+    },
 }
 
 from virtual_microscope.backends.flow_cytometry.sim import FlowCytometrySim

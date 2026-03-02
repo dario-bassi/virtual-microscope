@@ -5,6 +5,20 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "membrane"],
     "continuous": True,
     "extra_devices": [],
+    "specimen": "Generic scattered cells (vertex model)",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "A generic cell simulation using the vertex-based scattered-cell model. "
+        "Cells undergo cell-cycle progression with division and apoptosis. "
+        "Provides phase-contrast, DAPI, and membrane channels as a baseline for "
+        "testing image-analysis pipelines on simple cell populations."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_cells": "Initial cell count (default 50)",
+        "world_size": "World size in pixels (default 1500)",
+        "base_radius": "Base cell radius in pixels (default 20)",
+    },
 }
 
 from pathlib import Path

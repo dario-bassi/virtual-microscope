@@ -5,6 +5,21 @@ BACKEND_INFO = {
     "channels": ["brightfield", "trypan-blue"],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "Cell suspension in Neubauer counting chamber",
+    "modality": "Brightfield with trypan blue",
+    "experiment_guide": (
+        "A hemocytometer counting chamber loaded with a cell suspension and "
+        "trypan-blue viability dye. Live cells exclude the dye and appear bright; "
+        "dead cells stain blue. Count cells in the grid squares to estimate "
+        "concentration. Useful for training cell-counting and "
+        "viability-estimation algorithms."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_cells": "Total cells in the chamber (default 150)",
+        "viability": "Fraction of live cells (default 0.85)",
+        "dilution_factor": "Dilution factor for concentration calculation (default 2)",
+    },
 }
 
 from virtual_microscope.backends.hemocytometer.sim import HemocytometerSim

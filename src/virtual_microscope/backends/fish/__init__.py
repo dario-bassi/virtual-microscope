@@ -5,6 +5,25 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "membrane"],
     "continuous": True,
     "extra_devices": ["Temperature", "Perfusion", "Electrode"],
+    "specimen": "Tissue section with FISH probes",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Examine fluorescence in situ hybridisation (FISH) signals in an "
+        "epithelial tissue section. Each nucleus contains punctate probe signals "
+        "indicating gene copy number. A fraction of cells show amplification "
+        "(extra copies) or deletion (fewer copies). Useful for training HER2-FISH "
+        "scoring algorithms."
+    ),
+    "device_effects": {
+        "Temperature": "No biological effect (static specimen); adjusts thermal noise",
+        "Perfusion": "No biological effect on fixed tissue",
+        "Electrode": "No biological effect on fixed tissue",
+    },
+    "key_parameters": {
+        "n_cells": "Number of cells in the tissue section (default 40)",
+        "locus_copies": "Normal gene copy number (default 2)",
+        "amplified_fraction": "Fraction of cells with gene amplification (default 0.15)",
+    },
 }
 
 from pathlib import Path

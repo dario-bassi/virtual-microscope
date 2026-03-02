@@ -5,6 +5,19 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "MAP2-GFP", "synaptophysin"],
     "continuous": True,
     "extra_devices": [],
+    "specimen": "Primary cortical neurons in culture",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Observe cultured neurons with branching dendrites and axons. MAP2-GFP "
+        "labels dendrites; synaptophysin marks presynaptic terminals. Track "
+        "neurite outgrowth and synapse formation over time. Useful for training "
+        "neurite-tracing and synapse-detection algorithms."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_neurons": "Number of neurons (default 8)",
+        "world_size": "World size in pixels (default 512)",
+    },
 }
 
 from pathlib import Path

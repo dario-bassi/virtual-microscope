@@ -5,6 +5,21 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "membrane"],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "Epithelial tissue monolayer (static)",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "A static Voronoi tessellation representing an epithelial monolayer. "
+        "Navigate the tissue with XY stage and zoom with objectives. "
+        "Phase-contrast shows cell boundaries, DAPI labels nuclei, and membrane "
+        "channel highlights cell–cell junctions. Useful as a simple baseline for "
+        "segmentation benchmarks."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_cells": "Number of cells in the tessellation (default 60)",
+        "jitter": "Voronoi jitter (randomness) 0–1 (default 0.7)",
+        "nucleus_fraction": "Nucleus-to-cell area ratio (default 0.3)",
+    },
 }
 
 from pathlib import Path

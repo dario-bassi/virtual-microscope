@@ -5,6 +5,25 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "GCaMP", "E-cadherin"],
     "continuous": True,
     "extra_devices": ["SLM", "SLM-Mode", "Temperature"],
+    "specimen": "Epithelial monolayer with GCaMP calcium reporter",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Observe calcium wave propagation across a cell monolayer using the GCaMP "
+        "fluorescent reporter. Use SLM masks to trigger calcium release at "
+        "specific locations and watch the wave spread through gap junctions. "
+        "Switch SLM-Mode between stimulation and spatial-filter illumination. "
+        "Temperature modulates wave speed and excitability."
+    ),
+    "device_effects": {
+        "SLM": "Triggers calcium release in illuminated cells, initiating a propagating wave",
+        "SLM-Mode": "Toggles between optogenetic stimulation and spatial-filter illumination",
+        "Temperature": "Higher temperature increases wave speed and cell excitability",
+    },
+    "key_parameters": {
+        "n_cells": "Number of cells in the monolayer (default 200)",
+        "grid_size": "Simulation grid size in pixels (default 512)",
+        "Du": "Calcium diffusion coefficient (default 5.0)",
+    },
 }
 
 from pathlib import Path

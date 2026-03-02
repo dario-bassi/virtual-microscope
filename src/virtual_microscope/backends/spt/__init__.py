@@ -5,6 +5,22 @@ BACKEND_INFO = {
     "channels": ["widefield", "TIRF"],
     "continuous": True,
     "extra_devices": [],
+    "specimen": "Fluorescent nanoparticles / single molecules",
+    "modality": "Widefield + TIRF epifluorescence",
+    "experiment_guide": (
+        "Track single fluorescent particles undergoing free diffusion, confined "
+        "diffusion, or directed transport. Particles exhibit stochastic blinking "
+        "and irreversible photobleaching. Compare widefield vs. TIRF illumination "
+        "for signal-to-noise. Useful for benchmarking single-particle tracking "
+        "algorithms."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_free": "Free-diffusion particles (default 20)",
+        "n_confined": "Confined-diffusion particles (default 10)",
+        "n_directed": "Directed-transport particles (default 5)",
+        "D_free": "Free diffusion coefficient (default 0.1)",
+    },
 }
 
 from pathlib import Path

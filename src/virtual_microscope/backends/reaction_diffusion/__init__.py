@@ -5,6 +5,25 @@ BACKEND_INFO = {
     "channels": ["both-species", "activator-U", "inhibitor-V"],
     "continuous": True,
     "extra_devices": ["SLM", "SLM-Mode"],
+    "specimen": "Gray–Scott reaction–diffusion system",
+    "modality": "Pseudo-fluorescence (activator / inhibitor concentration maps)",
+    "experiment_guide": (
+        "Watch Turing patterns emerge from a Gray–Scott reaction–diffusion "
+        "system. The activator (U) and inhibitor (V) form spots, stripes, or "
+        "waves depending on feed/kill parameters (F, K). Use SLM masks to locally "
+        "perturb concentrations and seed new pattern domains. SLM-Mode toggles "
+        "between adding activator and adding inhibitor."
+    ),
+    "device_effects": {
+        "SLM": "Locally perturbs species concentrations in illuminated regions",
+        "SLM-Mode": "Toggles perturbation target between activator (U) and inhibitor (V)",
+    },
+    "key_parameters": {
+        "grid_size": "Simulation grid size in pixels (default 512)",
+        "preset": "Pattern preset: 'waves', 'spots', 'stripes', etc. (default 'waves')",
+        "F": "Feed rate (default depends on preset)",
+        "K": "Kill rate (default depends on preset)",
+    },
 }
 
 from pathlib import Path

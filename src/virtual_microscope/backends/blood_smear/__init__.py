@@ -5,6 +5,22 @@ BACKEND_INFO = {
     "channels": ["wright-giemsa", "nuclei-aid", "membrane-aid"],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "Peripheral blood smear (Wright-Giemsa stain)",
+    "modality": "Brightfield histology (RGB output)",
+    "experiment_guide": (
+        "A fixed, stained peripheral blood smear. Navigate the slide to find "
+        "RBCs, WBCs (neutrophils, lymphocytes, monocytes), and platelets. Switch "
+        "between composite Wright-Giemsa view and auxiliary channels highlighting "
+        "nuclei or membranes. Useful for training automated differential "
+        "white-cell counters and detecting abnormal morphologies."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_rbc": "Red blood cell count (default 800)",
+        "n_wbc": "White blood cell count (default 15)",
+        "abnormal_rbc": "Dict of abnormality fractions (e.g. sickle, target)",
+        "rouleaux_fraction": "Fraction of RBCs in rouleaux stacks (default 0.0)",
+    },
 }
 
 from pathlib import Path

@@ -5,6 +5,20 @@ BACKEND_INFO = {
     "channels": ["H-and-E", "hematoxylin", "eosin"],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "H&E-stained tissue section",
+    "modality": "Brightfield histopathology (RGB output)",
+    "experiment_guide": (
+        "A static stained tissue section. Switch between composite H&E view, "
+        "isolated hematoxylin (nuclei), and eosin (cytoplasm/stroma) channels. "
+        "Navigate across the slide with XY stage and zoom with objectives. Useful "
+        "for training histopathology image analysis pipelines."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "tissue_type": "Tissue morphology preset (default 'glandular')",
+        "grade": "Tumour differentiation grade (default 0 = normal)",
+        "n_nuclei": "Number of nuclei to generate (default 200)",
+    },
 }
 
 from pathlib import Path

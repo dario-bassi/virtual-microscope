@@ -5,6 +5,26 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "membrane"],
     "continuous": True,
     "extra_devices": ["SLM", "Temperature", "Perfusion", "Electrode"],
+    "specimen": "Epithelial monolayer (scratch-wound assay)",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Simulates a classic scratch-wound healing assay. Cells are seeded as a "
+        "confluent monolayer, then a vertical scratch wound is created. Track "
+        "wound closure over time with phase-contrast time-lapse. Use the "
+        "Electrode device to apply an electric field for galvanotaxis. "
+        "Temperature and perfusion control cell migration speed."
+    ),
+    "device_effects": {
+        "SLM": "Optogenetic stimulation increases migration speed of illuminated cells",
+        "Temperature": "Higher temperature increases migration speed",
+        "Perfusion": "Drug mode can inhibit migration",
+        "Electrode": "Applies directional electric field for galvanotaxis — cells migrate toward cathode",
+    },
+    "key_parameters": {
+        "n_cells": "Cell count (default 100)",
+        "wound_width": "Scratch width in pixels (default 120)",
+        "migration_speed": "Base migration speed (default 2.0)",
+    },
 }
 
 from pathlib import Path

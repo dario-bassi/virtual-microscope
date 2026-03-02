@@ -5,6 +5,21 @@ BACKEND_INFO = {
     "channels": ["brightfield", "Calcein-AM", "propidium-iodide"],
     "continuous": True,
     "extra_devices": [],
+    "specimen": "Multicellular tumour spheroid (MTS)",
+    "modality": "Brightfield + epifluorescence",
+    "experiment_guide": (
+        "View a cross-section of a multicellular tumour spheroid with a necrotic "
+        "core, quiescent rim, and proliferating outer shell. Calcein-AM labels "
+        "live cells green; propidium iodide labels dead cells red. Track spheroid "
+        "growth and viability gradients over time. Useful for training spheroid "
+        "segmentation and viability analysis."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "radius": "Spheroid radius in pixels (default 80)",
+        "n_cells": "Total number of cells (default 2000)",
+        "necrotic_fraction": "Fraction of necrotic core (default 0.45)",
+    },
 }
 
 from pathlib import Path

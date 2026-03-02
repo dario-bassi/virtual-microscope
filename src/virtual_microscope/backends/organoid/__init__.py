@@ -5,6 +5,21 @@ BACKEND_INFO = {
     "channels": ["brightfield", "DAPI", "E-cadherin"],
     "continuous": True,
     "extra_devices": [],
+    "specimen": "Intestinal organoid cross-section",
+    "modality": "Brightfield + epifluorescence",
+    "experiment_guide": (
+        "View a cross-section through a 3D organoid with a central lumen, "
+        "polarised wall cells, and optional budding crypts. E-cadherin highlights "
+        "cell–cell junctions; DAPI labels nuclei. Track organoid growth and "
+        "morphogenesis over time. Useful for training organoid segmentation and "
+        "morphometric analysis pipelines."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "outer_radius": "Organoid outer radius in pixels (default 120)",
+        "n_cells": "Number of cells in the organoid wall (default 400)",
+        "n_buds": "Number of crypt buds (default 0)",
+    },
 }
 
 from pathlib import Path

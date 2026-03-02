@@ -5,6 +5,25 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "GCaMP", "cell-junctions"],
     "continuous": True,
     "extra_devices": ["SLM", "Temperature", "Perfusion"],
+    "specimen": "iPSC-derived cardiomyocytes",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Observe beating cardiomyocytes with calcium transients visualised via "
+        "GCaMP. Normal cells beat synchronously; a fraction exhibit arrhythmic "
+        "pacing. Use SLM to optically pace specific regions and restore "
+        "synchrony. Perfusion delivers drugs (e.g. isoproterenol) that alter beat "
+        "rate. Temperature affects contraction frequency."
+    ),
+    "device_effects": {
+        "SLM": "Optically paces illuminated cells, overriding their intrinsic rhythm",
+        "Temperature": "Beat frequency scales with temperature (Q10 ≈ 2)",
+        "Perfusion": "Delivers chronotropic drugs that increase or decrease beat rate",
+    },
+    "key_parameters": {
+        "n_cells": "Number of cardiomyocytes (default 300)",
+        "normal_freq": "Normal beating frequency in Hz (default 1.0)",
+        "arrhythmia_fraction": "Fraction of cells with arrhythmic pacing (default 0.12)",
+    },
 }
 
 from pathlib import Path

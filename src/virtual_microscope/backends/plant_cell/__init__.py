@@ -5,6 +5,21 @@ BACKEND_INFO = {
     "channels": ["iodine-stain", "DAPI", "Calcofluor-White"],
     "continuous": True,
     "extra_devices": [],
+    "specimen": "Plant tissue (e.g. onion epidermis, Elodea leaf)",
+    "modality": "Brightfield (iodine) + epifluorescence",
+    "experiment_guide": (
+        "View rectangular plant cells with rigid cell walls, chloroplasts, and "
+        "central vacuoles. Iodine staining highlights starch granules; "
+        "Calcofluor-White labels cell walls; DAPI labels nuclei. Useful for "
+        "teaching plant cell anatomy and training cell-wall segmentation "
+        "algorithms."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "world_size": "World size in pixels (default 512)",
+        "cell_length_range": "Cell length range in px (default (150, 250))",
+        "wall_thickness": "Cell wall thickness in px (default 7.0)",
+    },
 }
 
 from pathlib import Path

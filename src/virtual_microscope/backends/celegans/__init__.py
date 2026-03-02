@@ -5,6 +5,23 @@ BACKEND_INFO = {
     "channels": ["DIC", "GFP-pharynx", "mCherry-body"],
     "continuous": True,
     "extra_devices": ["Temperature", "Perfusion"],
+    "specimen": "C. elegans (nematode worm)",
+    "modality": "DIC + epifluorescence",
+    "experiment_guide": (
+        "Track a crawling C. elegans nematode with sinusoidal body bending. Use "
+        "DIC for body morphology, GFP-pharynx for the feeding organ, and "
+        "mCherry-body for body-wall muscle. Temperature affects crawling speed; "
+        "perfusion can deliver paralytic agents (e.g. levamisole)."
+    ),
+    "device_effects": {
+        "Temperature": "Crawling speed scales with temperature; low temperature slows locomotion",
+        "Perfusion": "Delivers paralytic agents or nutrients affecting worm behaviour",
+    },
+    "key_parameters": {
+        "worm_length": "Worm body length in pixels (default 250)",
+        "worm_width": "Worm body width in pixels (default 18)",
+        "speed": "Crawling speed in px/s (default 40)",
+    },
 }
 
 from pathlib import Path

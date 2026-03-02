@@ -5,6 +5,19 @@ BACKEND_INFO = {
     "channels": ["gel-image"],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "Electrophoresis gel (western, DNA agarose, or Coomassie)",
+    "modality": "Gel documentation (transillumination / chemiluminescence)",
+    "experiment_guide": (
+        "A gel electrophoresis documentation image. View multi-lane band patterns "
+        "from western blots, DNA agarose gels, or Coomassie-stained protein gels. "
+        "Navigate the gel with XY stage and zoom with objectives. Useful for "
+        "training lane-detection and band-quantification pipelines."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_lanes": "Number of gel lanes (default 8)",
+        "gel_type": "Gel type: 'western', 'dna', or 'coomassie' (default 'western')",
+    },
 }
 
 from virtual_microscope.backends.gel_doc.sim import GelDocSim

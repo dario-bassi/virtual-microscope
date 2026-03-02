@@ -22,29 +22,29 @@ from virtual_microscope.backends import list_backends, describe_backends
 
 # ── Badge helpers ────────────────────────────────────────────────────────────
 
-_TAG = (
-    '<span style="display:inline-block;padding:2px 10px;border-radius:12px;'
-    'font-family:Arial,sans-serif;font-size:13px;'
-    'background:{bg};color:{fg}">{label}</span>'
-)
+def _shields_escape(text: str) -> str:
+    """Escape text for shields.io URL path: - → --, _ → __, space → _."""
+    return text.replace("-", "--").replace("_", "__").replace(" ", "_")
 
 
-def _tag(label: str, bg: str, fg: str) -> str:
-    return _TAG.format(bg=bg, fg=fg, label=label)
+def _badge(label: str, color: str) -> str:
+    """Return a shields.io markdown badge image."""
+    slug = _shields_escape(label)
+    return f"![{label}](https://img.shields.io/badge/{slug}-{color})"
 
 
 def _channel_badge(ch: str) -> str:
-    return _tag(ch, "#ADD3FF", "#1a4a7a")
+    return _badge(ch, "ADD3FF")
 
 
 def _device_badge(dev: str) -> str:
-    return _tag(dev, "#DBC8FF", "#4a2d7a")
+    return _badge(dev, "DBC8FF")
 
 
 def _dynamics_badge(continuous: bool) -> str:
     if continuous:
-        return _tag("continuous", "#AFE2BD", "#1a5c2e")
-    return _tag("static", "#CBCBCC", "#3a3a3a")
+        return _badge("continuous", "AFE2BD")
+    return _badge("static", "CBCBCC")
 
 
 # ── Gallery markdown generation ─────────────────────────────────────────────
@@ -72,9 +72,19 @@ def generate_md(
         channels = info.get("channels", [])
         continuous = info.get("continuous", False)
         extra = info.get("extra_devices", [])
+        specimen = info.get("specimen", "")
+        modality = info.get("modality", "")
+        guide = info.get("experiment_guide", "")
+        device_effects = info.get("device_effects", {})
+        key_params = info.get("key_parameters", {})
 
         # Title
         lines.append(f"## {name}\n")
+
+        # Specimen + modality subtitle
+        if specimen or modality:
+            parts = [p for p in (specimen, modality) if p]
+            lines.append(f'*{" — ".join(parts)}*\n')
 
         # Description
         if desc:
@@ -97,6 +107,24 @@ def generate_md(
 
         if badges:
             lines.append(" ".join(badges) + "\n")
+
+        # Experiment guide
+        if guide:
+            lines.append(f"**Experiment guide:** {guide}\n")
+
+        # Device effects
+        if device_effects:
+            effects = " | ".join(
+                f"{dev} — {eff}" for dev, eff in device_effects.items()
+            )
+            lines.append(f"**Devices:** {effects}\n")
+
+        # Key parameters
+        if key_params:
+            params = " · ".join(
+                f"`{k}` ({v})" for k, v in key_params.items()
+            )
+            lines.append(f"**Parameters:** {params}\n")
 
     return "\n".join(lines)
 
@@ -129,7 +157,8 @@ def run_showcase(name: str, seed: int = 0) -> list[np.ndarray] | None:
 
 def main():
     parser = argparse.ArgumentParser(description="Generate virtual-microscope backend gallery")
-    parser.add_argument("--output-dir", default="docs/gallery", help="Output directory for gallery")
+    _repo_root = Path(__file__).resolve().parent.parent
+    parser.add_argument("--output-dir", default=str(_repo_root / "docs" / "gallery"), help="Output directory for gallery")
     parser.add_argument("--backends", default=None, help="Comma-separated list of backends (default: all)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for showcase images")
     parser.add_argument("--md-only", action="store_true", help="Regenerate gallery.md without re-rendering images")

@@ -8,14 +8,14 @@ print("Available backends:", list_backends())
 # Set up the bacteria microscope
 core, sim = setup_bacteria(n_cells=30, seed=42)
 
-# Take a snapshot in brightfield
-core.setConfig("Channel", "brightfield")
+# Take a snapshot in phase-contrast
+core.setConfig("Channel", "phase-contrast")
 core.snapImage()
 img = core.getImage()
-print(f"Brightfield image: {img.shape}, dtype={img.dtype}, range=[{img.min()}, {img.max()}]")
+print(f"Phase-contrast image: {img.shape}, dtype={img.dtype}, range=[{img.min()}, {img.max()}]")
 
 # Switch to fluorescence and snap
-core.setConfig("Channel", "nucleus-channel")
+core.setConfig("Channel", "GFP")
 core.snapImage()
 img_fl = core.getImage()
 print(f"Fluorescence image: {img_fl.shape}, dtype={img_fl.dtype}")

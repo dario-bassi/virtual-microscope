@@ -5,6 +5,21 @@ BACKEND_INFO = {
     "channels": ["giemsa", "chromatin-aid", "RBC-overlay"],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "Giemsa-stained thin blood smear with Plasmodium parasites",
+    "modality": "Brightfield histology (RGB output)",
+    "experiment_guide": (
+        "A Giemsa-stained thin blood smear with intra-erythrocytic Plasmodium "
+        "parasites at various developmental stages (ring, trophozoite, schizont). "
+        "Navigate the smear to find infected RBCs and count parasitemia. Useful "
+        "for training malaria diagnostic algorithms and studying parasite "
+        "morphology including appliqué (accolé) forms."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "parasitemia": "Fraction of infected RBCs (default 0.05)",
+        "n_rbc": "Total red blood cell count (default 2000)",
+        "hours_per_step": "Hours of parasite development per step (default 2.0)",
+    },
 }
 
 from pathlib import Path

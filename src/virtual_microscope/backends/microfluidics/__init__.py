@@ -5,6 +5,25 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "DAPI", "fluorescein"],
     "continuous": True,
     "extra_devices": ["Temperature", "Perfusion"],
+    "specimen": "Cells in a microfluidic channel",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Watch cells flowing through a microfluidic channel with optional "
+        "trapping posts and chemical gradients. Use perfusion to control flow "
+        "speed and deliver fluorescein for gradient visualisation. Temperature "
+        "affects cell viability and motility. Useful for studying shear stress "
+        "effects and chemotaxis in confined geometries."
+    ),
+    "device_effects": {
+        "Temperature": "Affects cell viability and motility in the channel",
+        "Perfusion": "Controls flow speed and delivers chemical gradients",
+    },
+    "key_parameters": {
+        "n_cells": "Number of cells in the channel (default 30)",
+        "channel_width": "Channel width in pixels (default 100)",
+        "flow_speed": "Flow speed in px/step (default 3.0)",
+        "n_traps": "Number of trapping posts (default 0)",
+    },
 }
 
 from pathlib import Path

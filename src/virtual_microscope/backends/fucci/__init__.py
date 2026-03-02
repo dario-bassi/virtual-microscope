@@ -5,6 +5,24 @@ BACKEND_INFO = {
     "channels": ["phase-contrast", "mCherry-Cdt1", "mVenus-Geminin"],
     "continuous": True,
     "extra_devices": ["Temperature", "Perfusion"],
+    "specimen": "Epithelial cells with FUCCI cell-cycle reporter",
+    "modality": "Phase-contrast + epifluorescence",
+    "experiment_guide": (
+        "Track cell-cycle progression using the FUCCI dual-colour reporter. "
+        "G1-phase cells express mCherry-Cdt1 (red) while S/G2/M cells express "
+        "mVenus-Geminin (green). Watch the monolayer as cells cycle and divide. "
+        "Temperature accelerates or slows cell-cycle progression; perfusion can "
+        "deliver cell-cycle inhibitors."
+    ),
+    "device_effects": {
+        "Temperature": "Higher temperature accelerates cell-cycle progression",
+        "Perfusion": "Delivers cell-cycle inhibitors (e.g. thymidine block, nocodazole)",
+    },
+    "key_parameters": {
+        "n_cells": "Initial cell count (default 60)",
+        "g1_duration": "G1 phase duration in steps (default 30)",
+        "s_duration": "S phase duration in steps (default 15)",
+    },
 }
 
 from pathlib import Path

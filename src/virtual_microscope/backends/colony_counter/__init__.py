@@ -5,6 +5,21 @@ BACKEND_INFO = {
     "channels": ["plate-image", "blue-channel", "gfp-channel"],
     "continuous": False,
     "extra_devices": [],
+    "specimen": "Bacterial colony plate (agar)",
+    "modality": "Brightfield plate imaging",
+    "experiment_guide": (
+        "A bacterial colony plate viewed from above. Count colonies on spread or "
+        "streak plates, with optional blue-white screening (lacZ) or GFP "
+        "fluorescence. Useful for training colony-counting algorithms and "
+        "studying plating efficiency, satellite colonies, and zone-of-inhibition "
+        "assays."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_colonies": "Number of colonies (default 200)",
+        "plate_type": "Plate type: 'spread' or 'streak' (default 'spread')",
+        "staining": "Optional staining: 'blue-white', 'gfp', or None",
+    },
 }
 
 from virtual_microscope.backends.colony_counter.sim import ColonySim

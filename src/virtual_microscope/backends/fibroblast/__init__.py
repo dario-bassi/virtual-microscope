@@ -5,6 +5,24 @@ BACKEND_INFO = {
     "channels": ["brightfield", "DAPI", "phalloidin"],
     "continuous": True,
     "extra_devices": ["Temperature", "Perfusion", "Stretch"],
+    "specimen": "Adherent fibroblasts (primary or cell line)",
+    "modality": "Brightfield + epifluorescence",
+    "experiment_guide": (
+        "Observe adherent fibroblasts with actin stress fibres (phalloidin) and "
+        "nuclear staining (DAPI). Apply mechanical stretch to study cytoskeletal "
+        "remodelling. Perfusion delivers cytochalasin-D or latrunculin-A to "
+        "disrupt the actin network. Temperature affects cell spreading and "
+        "migration."
+    ),
+    "device_effects": {
+        "Temperature": "Higher temperature increases cell spreading and migration speed",
+        "Perfusion": "Delivers actin-disrupting drugs (CytoD, LatA) that dissolve stress fibres",
+        "Stretch": "Applies uniaxial mechanical stretch, reorienting stress fibres perpendicular to strain",
+    },
+    "key_parameters": {
+        "n_cells": "Number of fibroblasts (default 8)",
+        "world_size": "World size in pixels (default 512)",
+    },
 }
 
 from pathlib import Path

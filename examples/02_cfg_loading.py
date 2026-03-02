@@ -15,7 +15,7 @@ core = UniMMCore()
 core.loadSystemConfiguration(str(cfg_path))
 
 # Take a snapshot
-core.setConfig("Fake", "brightfield")
+core.setConfig("Channel", "phase-contrast")
 core.snapImage()
 img = core.getImage()
 print(f"Image via .cfg: {img.shape}, dtype={img.dtype}")

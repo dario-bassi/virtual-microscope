@@ -5,6 +5,21 @@ BACKEND_INFO = {
     "channels": ["brightfield", "DAPI", "MitoTracker"],
     "continuous": True,
     "extra_devices": [],
+    "specimen": "Cultured cells with MitoTracker-stained mitochondria",
+    "modality": "Brightfield + epifluorescence",
+    "experiment_guide": (
+        "Observe mitochondrial networks stained with MitoTracker. Tubules undergo "
+        "stochastic fission and fusion, dynamically remodelling the network. "
+        "Increase fragmentation to simulate stress or drug treatment (e.g. CCCP). "
+        "Track network topology changes over time for morphometric analysis."
+    ),
+    "device_effects": {},
+    "key_parameters": {
+        "n_tubules": "Initial number of mitochondrial tubules (default 40)",
+        "fragmentation": "Baseline fragmentation level 0–1 (default 0.0)",
+        "fission_rate": "Fission event probability per step (default 0.03)",
+        "fusion_rate": "Fusion event probability per step (default 0.03)",
+    },
 }
 
 from pathlib import Path

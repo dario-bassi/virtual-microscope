@@ -1,6 +1,8 @@
 # Virtual Microscope
 
-A fully simulated microscope platform that generates realistic microscopy images — no hardware required. Each backend simulates a different biological specimen with brightfield, fluorescence, and specialty imaging modes, all compatible with the [pymmcore-plus](https://github.com/pymmcore-plus/pymmcore-plus) device interface. Samples can be perturbed via photo-activation (SLM), temperature shifts, and drug perfusion, making the platform suitable for testing and training closed-loop feedback workflows.
+> **Note:** This project is in active development. APIs and backends may change without notice.
+
+A fully simulated microscope platform that generates realistic microscopy images — no hardware required. Each backend simulates a different biological specimen with brightfield, fluorescence, and specialty imaging modes, all compatible with the [pymmcore-plus](https://github.com/pymmcore-plus/pymmcore-plus) device interface. Samples can be perturbed via photo-activation (SLM), temperature shifts, and drug perfusion, making the platform suitable for testing and training closed-loop feedback workflows. See the [feedback control notebook](examples/03_feedback_control.ipynb) for a complete example.
 
 ## Gallery
 **[See the full gallery and description of all 35 backends →](docs/gallery.md)**

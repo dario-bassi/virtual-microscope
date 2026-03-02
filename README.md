@@ -6,12 +6,12 @@ A fully simulated microscope platform that generates realistic microscopy images
 
 | | | |
 |:---:|:---:|:---:|
-| ![bacteria](docs/gallery/frames/bacteria_01.png) | ![neuron](docs/gallery/frames/neuron_01.png) | ![calcium](docs/gallery/frames/calcium_01.png) |
-| **bacteria** | **neuron** | **calcium** |
-| ![blood_smear](docs/gallery/frames/blood_smear_01.png) | ![wound_healing](docs/gallery/frames/wound_healing_01.png) | ![malaria](docs/gallery/frames/malaria_01.png) |
-| **blood_smear** | **wound_healing** | **malaria** |
+| ![fucci](docs/gallery/frames/fucci_04.png) | ![histology](docs/gallery/frames/histology_03.png) | ![lipid_droplet](docs/gallery/frames/lipid_droplet_04.png) |
+| **fucci** | **histology** | **lipid_droplet** |
+| ![volvox](docs/gallery/frames/volvox_01.png) | ![neuron](docs/gallery/frames/neuron_04.png) | ![plant_cell](docs/gallery/frames/plant_cell_01.png) |
+| **volvox** | **neuron** | **plant_cell** |
 
-See the [full gallery](docs/gallery.md) for all 35 backends.
+**[See the full gallery for all 35 backends →](docs/gallery.md)**
 
 ## Installation
 
@@ -116,44 +116,7 @@ core.setProperty("NewExperiment", "Action", "New")
 
 ## Backends
 
-| Backend | Description | Continuous | Channels |
-|---------|-------------|:----------:|----------|
-| `bacteria` | Rod-shaped bacteria, growth & division | yes | `phase-contrast`, `GFP`, `DAPI` |
-| `blood_smear` | Wright-Giemsa stained peripheral blood | — | `wright-giemsa`, `membrane-aid`, `nuclei-aid` |
-| `calcium` | Calcium wave propagation (FitzHugh-Nagumo) | yes | `phase-contrast`, `GCaMP`, `E-cadherin` |
-| `cardio` | Cardiac tissue with calcium transients | yes | `phase-contrast`, `GCaMP`, `cell-junctions` |
-| `celegans` | *C. elegans* sinusoidal locomotion | yes | `DIC`, `GFP-pharynx`, `mCherry-body` |
-| `colony_counter` | Bacterial colony plates | — | `plate-image`, `blue-channel`, `gfp-channel` |
-| `dictyostelium` | Dictyostelium aggregation, cAMP waves | yes | `dark-field`, `GFP`, `cAMP-reporter` |
-| `fibroblast` | Fibroblasts with stress fibers, CytoD/LatA response | yes | `brightfield`, `DAPI`, `phalloidin` |
-| `fish` | FISH probes on tissue sections | yes | `phase-contrast`, `DAPI`, `membrane` |
-| `flow_cytometry` | Flow cytometry scatter & fluorescence | — | `scatter`, `FITC`, `PE` |
-| `fucci` | FUCCI cell-cycle reporter | yes | `phase-contrast`, `mCherry-Cdt1`, `mVenus-Geminin` |
-| `gel_doc` | Gel electrophoresis (western/agarose/Coomassie) | — | `gel-image` |
-| `hemocytometer` | Neubauer chamber with trypan blue | — | `brightfield`, `trypan-blue` |
-| `histology` | H&E stained tissue sections | — | `H-and-E`, `hematoxylin`, `eosin` |
-| `lipid_droplet` | Hepatocytes with lipid droplets | yes | `phase-contrast`, `DAPI`, `membrane` |
-| `lysosome` | LysoTracker-stained lysosomes | yes | `phase-contrast`, `DAPI`, `membrane` |
-| `malaria` | Giemsa smear with *Plasmodium* parasites | — | `giemsa`, `chromatin-aid`, `RBC-overlay` |
-| `microfluidics` | Microfluidic channel with flowing cells | yes | `phase-contrast`, `DAPI`, `fluorescein` |
-| `mito` | Mitochondrial network, fission/fusion | yes | `brightfield`, `DAPI`, `MitoTracker` |
-| `neuron` | Neurons with dendrites & synapses | yes | `phase-contrast`, `MAP2-GFP`, `synaptophysin` |
-| `organoid` | 3D organoid cross-section | yes | `brightfield`, `DAPI`, `E-cadherin` |
-| `particle` | Scattered-cell simulation with cell cycle | — | `phase-contrast`, `DAPI`, `membrane` |
-| `plant_cell` | Plant cells with cell walls | yes | `iodine-stain`, `DAPI`, `Calcofluor-White` |
-| `plate_reader` | 96-well microplate assays | — | *(raw camera)* |
-| `reaction_diffusion` | Gray-Scott Turing patterns | yes | `activator-U`, `inhibitor-V`, `both-species` |
-| `spheroid` | Multicellular tumor spheroid | yes | `brightfield`, `Calcein-AM`, `propidium-iodide` |
-| `spt` | Single-particle tracking | yes | `TIRF`, `widefield` |
-| `stress_granule` | Stress granules (G3BP1) | yes | `phase-contrast`, `DAPI`, `membrane` |
-| `viability` | Live/dead viability staining | yes | `phase-contrast`, `DAPI`, `membrane` |
-| `volvox` | *Volvox* colonial algae | yes | `brightfield`, `chlorophyll`, `pherophorin` |
-| `voronoi` | Voronoi tissue (static) | — | `phase-contrast`, `DAPI`, `membrane` |
-| `wound_healing` | Scratch wound healing assay | yes | `phase-contrast`, `DAPI`, `membrane` |
-| `yeast` | Budding yeast (*S. cerevisiae*) | yes | `phase-contrast`, `Calcofluor-White`, `GFP-reporter` |
-| `zebrafish` | Zebrafish embryo, transgenic reporters | yes | `brightfield`, `flk1-GFP`, `myl7-mCherry` |
-
-Each backend embeds rich documentation in its `BACKEND_INFO` dict (specimen, modality, experiment guide, device effects, key parameters). Access it programmatically:
+Each of the 35 backends embeds rich documentation in its `BACKEND_INFO` dict (specimen, modality, experiment guide, device effects, key parameters). Access it programmatically:
 
 ```python
 from virtual_microscope.backends import describe_backends
@@ -267,23 +230,22 @@ src/virtual_microscope/
 │   ├── debris_overlay.py        # Debris/dirt overlay effects
 │   └── nuclear_texture.py       # Textured nuclear rendering
 ├── backends/
-│   ├── __init__.py              # load_backend(), list_backends()
-│   ├── bacteria/                # one directory per backend
-│   │   ├── __init__.py          #   create_sim() + setup_*_microscope()
+│   ├── __init__.py              # load_backend(), list_backends(), describe_backends()
+│   ├── bacteria/                # one directory per backend (35 total)
+│   │   ├── __init__.py          #   BACKEND_INFO + create_sim() + setup_bacteria()
 │   │   ├── sim.py               #   BacteriaSim(SimBase)
 │   │   ├── bacteria.cfg         #   device & channel config
 │   │   └── showcase.py          #   gallery image generator
-│   ├── fucci/
-│   │   ├── sim.py               #   FucciSim(DynamicVoronoiSim) — FUCCI reporter
-│   │   └── ...
-│   ├── lysosome/
-│   │   ├── sim.py               #   LysosomeSim(DynamicVoronoiSim) — LysoTracker
-│   │   └── ...
-│   ├── ...                      # 35 backends total
-│   └── zebrafish/
+│   └── .../                     # 34 more backends
 ├── devices/
 │   ├── sim_server.py            # SimServer — main pymmcore device adapter
-│   └── new_experiment.py        # NewExperimentDevice — reset/recreate
+│   ├── new_experiment.py        # NewExperimentDevice — reset/recreate
+│   ├── camera.py                # Camera device adapter
+│   ├── shutter.py               # Shutter device adapter
+│   ├── slm.py                   # SLM device adapter
+│   ├── stage.py                 # XY stage device adapter
+│   ├── z_stage.py               # Z (focus) stage device adapter
+│   └── state.py                 # State device (objective, temperature, etc.)
 ├── _init_standard.py            # load_cfg() — wires everything together
-└── ...
+└── _showcase_utils.py           # Shared helpers for showcase image generation
 ```

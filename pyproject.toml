@@ -8,11 +8,13 @@ dependencies = [
     "numpy>=1.20",
     "scipy>=1.7",
     "opencv-python>=4.5",
+    "numba>=0.56",
 ]
 
 [project.optional-dependencies]
 server = ["pymmcore-proxy"]
 viz = ["matplotlib", "imageio"]
+examples = ["tqdm", "matplotlib"]
 
 [build-system]
 requires = ["hatchling"]

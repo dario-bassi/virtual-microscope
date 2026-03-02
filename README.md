@@ -101,9 +101,9 @@ The engine supports:
 import numpy as np
 
 core, sim = load_backend("calcium")
-mask = np.zeros((512, 512), dtype=bool)
-mask[200:300, 200:300] = True          # illuminate a square region
-core.setSLMImage("SLM", mask.ravel())  # triggers calcium wave at target
+mask = np.zeros((512, 512), dtype=np.uint8)
+mask[200:300, 200:300] = 1             # illuminate a square region
+core.setSLMImage("SLM", mask)          # triggers calcium wave at target
 
 # The stimulation field decays exponentially over time
 ```

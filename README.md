@@ -1,17 +1,22 @@
 # Virtual Microscope
 
-A fully simulated microscope platform that generates realistic microscopy images — no hardware required. Each backend simulates a different biological specimen with brightfield, fluorescence, and specialty imaging modes, all compatible with the [pymmcore-plus](https://github.com/pymmcore-plus/pymmcore-plus) device interface.
+A fully simulated microscope platform that generates realistic microscopy images — no hardware required. Each backend simulates a different biological specimen with brightfield, fluorescence, and specialty imaging modes, all compatible with the [pymmcore-plus](https://github.com/pymmcore-plus/pymmcore-plus) device interface. Samples can be perturbed via photo-activation (SLM), temperature shifts, and drug perfusion, making the platform suitable for testing and training closed-loop feedback workflows.
 
 ## Gallery
+**[See the full gallery and description of all 35 backends →](docs/gallery.md)**
 
-| | | |
-|:---:|:---:|:---:|
-| ![fucci](docs/gallery/frames/fucci_04.png) | ![histology](docs/gallery/frames/histology_03.png) | ![lipid_droplet](docs/gallery/frames/lipid_droplet_04.png) |
-| **fucci** | **histology** | **lipid_droplet** |
-| ![volvox](docs/gallery/frames/volvox_01.png) | ![neuron](docs/gallery/frames/neuron_04.png) | ![plant_cell](docs/gallery/frames/plant_cell_01.png) |
-| **volvox** | **neuron** | **plant_cell** |
-
-**[See the full gallery for all 35 backends →](docs/gallery.md)**
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/gallery/frames/fucci_04.png" width="100%"><br><b>fucci</b></td>
+    <td align="center" width="33%"><img src="docs/gallery/frames/histology_03.png" width="100%"><br><b>histology</b></td>
+    <td align="center" width="33%"><img src="docs/gallery/frames/lipid_droplet_04.png" width="100%"><br><b>lipid_droplet</b></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><img src="docs/gallery/frames/volvox_01.png" width="100%"><br><b>volvox</b></td>
+    <td align="center" width="33%"><img src="docs/gallery/frames/neuron_04.png" width="100%"><br><b>neuron</b></td>
+    <td align="center" width="33%"><img src="docs/gallery/frames/plant_cell_01.png" width="100%"><br><b>plant_cell</b></td>
+  </tr>
+</table>
 
 ## Installation
 
@@ -64,7 +69,7 @@ sim.step(dt=1.0)
 
 1. `core.snap()` calls `SimulationBridge.snap(exposure, brightness)`
 2. Bridge passes SLM mask + device state to `sim.snap_frame()`
-3. Sim renders at `internal_scale × world_size` (typically 4x)
+3. Sim renders at `internal_scale x world_size` (typically 4x)
 4. `SimBase._crop_fov()` extracts the viewport region for the current objective and resizes to 512×512
 5. `SimBase._apply_defocus()` applies Gaussian blur based on focal distance
 6. `SimBase._apply_exposure()` scales brightness for BF vs fluorescence
@@ -203,30 +208,30 @@ def setup_my_backend(**kwargs):
 ```
 src/virtual_microscope/
 ├── base/
-│   └── sim_base.py              # SimBase ABC — shared microscope state & pipeline
+│   └── sim_base.py              # SimBase ABC: shared microscope state & pipeline
 ├── sims/
 │   ├── voronoi/
-│   │   ├── voronoi.py           # VoronoiSim — Voronoi tessellation tissue
-│   │   └── tissue_dynamics.py   # DynamicVoronoiSim — migration, division, wound healing, hooks
+│   │   ├── voronoi.py           # VoronoiSim: Voronoi tessellation tissue
+│   │   └── tissue_dynamics.py   # DynamicVoronoiSim: migration, division, wound healing, hooks
 │   └── cell/
 │       ├── sim.py               # ScatteredCellSim (particle backend)
 │       ├── renderer.py          # Cell cycle rendering (brightfield, nucleus, membrane)
 │       ├── chromatin.py         # Chromatin/chromosome drawing functions
 │       ├── apoptosis.py         # Apoptosis phase rendering
 │       ├── cycle_manager.py     # Division/death population dynamics
-│       ├── cycle.py             # CellCycleNormal — cell cycle state machine
-│       ├── cell.py              # CellBase — core physics (Numba-accelerated)
-│       ├── normal.py            # NormalCell — default cell type
+│       ├── cycle.py             # CellCycleNormal: cell cycle state machine
+│       ├── cell.py              # CellBase: core physics (Numba-accelerated)
+│       ├── normal.py            # NormalCell: default cell type
 │       ├── drug.py              # DrugResponseCell
 │       ├── optogenetic.py       # OptogeneticCell
 │       └── spatial_grid.py      # Spatial indexing for collision detection
 ├── engine/
-│   ├── simulation_bridge.py     # SimulationBridge — sim ↔ device adapter
-│   ├── realtime.py              # RealtimeEngine — background sim thread
-│   ├── slm_processor.py         # SLMProcessor — mask mapping & decay field
-│   └── multi_field_sim.py       # MultiFieldBridge — multi-position experiments
+│   ├── simulation_bridge.py     # SimulationBridge: sim ↔ device adapter
+│   ├── realtime.py              # RealtimeEngine: background sim thread
+│   ├── slm_processor.py         # SLMProcessor: mask mapping & decay field
+│   └── multi_field_sim.py       # MultiFieldBridge: multi-position experiments
 ├── pipeline/
-│   ├── optical_pipeline.py      # OpticalPipeline — noise, PSF, vignetting
+│   ├── optical_pipeline.py      # OpticalPipeline: noise, PSF, vignetting
 │   ├── debris_overlay.py        # Debris/dirt overlay effects
 │   └── nuclear_texture.py       # Textured nuclear rendering
 ├── backends/
@@ -238,8 +243,8 @@ src/virtual_microscope/
 │   │   └── showcase.py          #   gallery image generator
 │   └── .../                     # 34 more backends
 ├── devices/
-│   ├── sim_server.py            # SimServer — main pymmcore device adapter
-│   ├── new_experiment.py        # NewExperimentDevice — reset/recreate
+│   ├── sim_server.py            # SimServer: main pymmcore device adapter
+│   ├── new_experiment.py        # NewExperimentDevice: reset/recreate
 │   ├── camera.py                # Camera device adapter
 │   ├── shutter.py               # Shutter device adapter
 │   ├── slm.py                   # SLM device adapter

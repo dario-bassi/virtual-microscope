@@ -31,6 +31,9 @@ class SimBase(ABC):
 
     continuous: bool = False
 
+    _FOV_MAP: dict = {100: 64, 40: 128, 20: 256}
+    _default_temperature: float = 37.0
+
     def __init__(
         self,
         width: int = 512,
@@ -114,6 +117,20 @@ class SimBase(ABC):
     # Device-state helpers
     # ──────────────────────────────────────────────────────────
 
+    def _get_temperature(self) -> float:
+        """Read temperature from the Temperature state device (°C).
+
+        Returns ``_default_temperature`` when the device is absent.
+        Subclasses override ``_default_temperature`` at the class level.
+        """
+        if "Temperature" not in self.state_devices:
+            return self._default_temperature
+        return float(
+            self.state_devices["Temperature"].get(
+                "label", str(self._default_temperature)
+            )
+        )
+
     def _update_mode(self):
         """Update rendering mode via ``_mode_map`` lookup."""
         if "Filter Wheel" not in self.state_devices or "LED" not in self.state_devices:
@@ -168,8 +185,7 @@ class SimBase(ABC):
         out_w, out_h = self.viewport_width, self.viewport_height
         obj = self.current_objectiv
 
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov_world = fov_map.get(obj, min(512, self.width))
+        fov_world = self._FOV_MAP.get(obj, min(512, self.width))
         fov_int = fov_world * s
 
         # Stage center in world coords → internal coords
@@ -278,6 +294,14 @@ class SimBase(ABC):
     # Z-drift
     # ──────────────────────────────────────────────────────────
 
+    def _accumulate_z_drift(self, dt: float) -> None:
+        """Advance tissue Z-drift by *dt* seconds."""
+        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
+            dz = self.z_drift_rate * dt
+            if self.z_drift_noise > 0:
+                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
+            self.tissue_z += dz
+
     def get_z_drift(self) -> float:
         """Return cumulative Z-drift (µm)."""
         return self.tissue_z
@@ -331,8 +355,7 @@ class SimBase(ABC):
     def _map_slm_to_world(self, mask: np.ndarray) -> np.ndarray:
         """Map viewport-space SLM mask to world-coordinate bool array."""
         obj = self.current_objectiv
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov_world = fov_map.get(obj, min(512, self.width))
+        fov_world = self._FOV_MAP.get(obj, min(512, self.width))
 
         cx = int(self.camera_offset[0]) + self.viewport_width // 2
         cy = int(self.camera_offset[1]) + self.viewport_height // 2

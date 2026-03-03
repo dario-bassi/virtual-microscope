@@ -219,9 +219,7 @@ class SPTSim(SimBase):
                     self._bright[i] = True
 
         # Z-drift
-        if self.z_drift_rate != 0 or self.z_drift_noise != 0:
-            self.tissue_z += (self.z_drift_rate * dt +
-                              self._noise_rng.normal(0, max(self.z_drift_noise * np.sqrt(dt), 0)))
+        self._accumulate_z_drift(dt)
 
     def _render_for_mode(self, mode):
         """Return full-resolution single-channel uint8 at internal resolution."""
@@ -271,8 +269,7 @@ class SPTSim(SimBase):
         spot_sigma = s * 0.7  # tight PSF (diffraction-limited)
 
         # Use meshgrid only for particles in rough FOV
-        fov_map = {100: 64, 40: 128, 20: 256, 10: self.width}
-        fov_px = fov_map.get(self.current_objectiv, self.width)
+        fov_px = self._FOV_MAP.get(self.current_objectiv, self.width)
         cx_world = int(self.camera_offset[0]) + self.viewport_width // 2
         cy_world = int(self.camera_offset[1]) + self.viewport_height // 2
         half = fov_px // 2
@@ -316,8 +313,7 @@ class SPTSim(SimBase):
         """Return list of currently visible particle dicts for scoring."""
         if at_objective is None:
             at_objective = self.current_objectiv
-        fov_map = {100: 64, 40: 128, 20: 256, 10: self.width}
-        fov_px = fov_map.get(at_objective, self.width)
+        fov_px = self._FOV_MAP.get(at_objective, self.width)
         W, H = self.viewport_width, self.viewport_height
         cx_world = int(self.camera_offset[0]) + W // 2
         cy_world = int(self.camera_offset[1]) + H // 2

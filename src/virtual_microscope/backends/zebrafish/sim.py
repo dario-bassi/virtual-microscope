@@ -841,8 +841,7 @@ class ZebrafishSim(SimBase):
 
     def _crop_fov(self, full_img):
         s = self.internal_scale
-        fov_map = {10: 512, 20: 256, 40: 128, 100: 64}
-        fov_world = fov_map.get(self.current_objectiv, 512)
+        fov_world = self._FOV_MAP.get(self.current_objectiv, 512)
         fov_int = fov_world * s
 
         ih, iw = full_img.shape[:2]
@@ -933,11 +932,7 @@ class ZebrafishSim(SimBase):
         self._rbc_param %= 1.0
 
         # Z-drift
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self._rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
     def step_autonomous(self, dt: float = 1.0):
         self.step(dt)

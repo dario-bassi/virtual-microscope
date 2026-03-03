@@ -1622,8 +1622,7 @@ class HistologySim(SimBase):
         cy = oy + self.viewport_height // 2
 
         # FOV in world units
-        fov_map = {100: 64, 40: 128, 20: 256}
-        fov = fov_map.get(obj, 512)
+        fov = self._FOV_MAP.get(obj, 512)
 
         half = fov // 2
         vx0 = max(0, cx - half)

@@ -24,6 +24,7 @@ Usage:
 
 import numpy as np
 import cv2
+from scipy.spatial import cKDTree
 from virtual_microscope.sims.voronoi.voronoi import VoronoiSim
 
 
@@ -919,6 +920,9 @@ class DynamicVoronoiSim(VoronoiSim):
         ``stim_speed_multiplier`` (default 2x). This simulates optogenetic
         acceleration of wound-edge cell migration.
         """
+        # Pre-compute all repulsion forces in O(N log N) via KDTree
+        repulsion_forces = self._batch_neighbor_repulsion()
+
         for i in range(self.n_cells):
             if not self.alive[i]:
                 continue
@@ -932,7 +936,7 @@ class DynamicVoronoiSim(VoronoiSim):
                 if self._stim_mask[py, px]:
                     speed_mult = self.stim_speed_multiplier
 
-            force = np.zeros(2)
+            force = repulsion_forces[i].copy()
 
             # Directed migration toward wound
             if self.wound_region is not None and self.migration_speed > 0:
@@ -956,9 +960,6 @@ class DynamicVoronoiSim(VoronoiSim):
                     perp = np.array([-field_vec[1], field_vec[0]])
                     galvano_force += perp * self.rng.normal(0, galvano_strength * noise_frac)
                     force += galvano_force
-
-            # Neighbor repulsion (prevent overlap)
-            force += self._neighbor_repulsion(i)
 
             # Apply force with damping
             self.centers[i] += force * dt
@@ -1022,27 +1023,51 @@ class DynamicVoronoiSim(VoronoiSim):
 
         return np.zeros(2)
 
-    def _neighbor_repulsion(self, cell_idx: int) -> np.ndarray:
-        """Soft repulsion from nearby cells to prevent overlap."""
-        px, py = self.centers[cell_idx]
-        force = np.zeros(2)
+    def _batch_neighbor_repulsion(self) -> np.ndarray:
+        """Compute repulsion forces for all cells at once using KDTree (O(N log N))."""
+        forces = np.zeros((self.n_cells, 2))
+        alive_mask = self.alive[:self.n_cells]
+        n_alive = alive_mask.sum()
+        if n_alive < 2:
+            return forces
 
-        for j in range(self.n_cells):
-            if j == cell_idx or not self.alive[j]:
-                continue
-            dx = px - self.centers[j][0]
-            dy = py - self.centers[j][1]
-            dist = np.sqrt(dx**2 + dy**2)
+        alive_idx = np.where(alive_mask)[0]
+        alive_centers = self.centers[alive_idx]
 
-            # Repulsion when closer than expected spacing
-            expected_spacing = np.sqrt(self.width * self.height / max(1, self.alive.sum()))
-            if dist < expected_spacing * 0.8:
-                strength = (expected_spacing * 0.8 - dist) / (expected_spacing * 0.8)
-                if dist > 0.1:
-                    force[0] += (dx / dist) * strength * 0.5
-                    force[1] += (dy / dist) * strength * 0.5
+        expected_spacing = np.sqrt(self.width * self.height / max(1, n_alive))
+        radius = expected_spacing * 0.8
 
-        return force
+        tree = cKDTree(alive_centers)
+        pairs = tree.query_pairs(radius, output_type='ndarray')
+        if len(pairs) == 0:
+            return forces
+
+        # Vectorized pairwise force computation
+        ci = alive_centers[pairs[:, 0]]
+        cj = alive_centers[pairs[:, 1]]
+        delta = ci - cj  # direction from j to i
+        dist = np.sqrt((delta ** 2).sum(axis=1))
+
+        # Filter out near-zero distances
+        valid = dist > 0.1
+        pairs = pairs[valid]
+        delta = delta[valid]
+        dist = dist[valid]
+
+        strength = (radius - dist) / radius  # linear falloff
+        fx = (delta[:, 0] / dist) * strength * 0.5
+        fy = (delta[:, 1] / dist) * strength * 0.5
+
+        # Accumulate forces (Newton's 3rd law: equal and opposite)
+        alive_forces = np.zeros((len(alive_idx), 2))
+        np.add.at(alive_forces[:, 0], pairs[:, 0], fx)
+        np.add.at(alive_forces[:, 1], pairs[:, 0], fy)
+        np.add.at(alive_forces[:, 0], pairs[:, 1], -fx)
+        np.add.at(alive_forces[:, 1], pairs[:, 1], -fy)
+
+        # Map back to full array
+        forces[alive_idx] = alive_forces
+        return forces
 
     def _divide(self, dt: float):
         """Probabilistic cell division."""

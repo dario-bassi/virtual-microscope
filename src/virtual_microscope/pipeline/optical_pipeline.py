@@ -98,6 +98,10 @@ class OpticalPipeline:
         self._focus_drift_sigma = 0.0  # additional blur from drift
         self._n_frames_applied = 0
 
+        # Cached vignette falloff (lazy-init, invalidated on dimension change)
+        self._vignette_cache = None  # (h, w, falloff_array)
+
+
     # ---- Public API ----
 
     def apply(self, img: np.ndarray, exposure_ms: float = 50.0,
@@ -395,11 +399,18 @@ class OpticalPipeline:
             return img
 
         h, w = img.shape[:2]
-        cy, cx = h / 2, w / 2
-        Y, X = np.ogrid[:h, :w]
-        max_dist = np.sqrt(cx**2 + cy**2)
-        dist = np.sqrt((X - cx)**2 + (Y - cy)**2) / max_dist
-        falloff = (1.0 - self.vignette_strength * dist**2).astype(np.float32)
+
+        # Reuse cached falloff if dimensions match
+        if self._vignette_cache is not None:
+            ch, cw, falloff = self._vignette_cache
+            if ch == h and cw == w:
+                pass  # reuse falloff
+            else:
+                falloff = self._compute_vignette_falloff(h, w)
+                self._vignette_cache = (h, w, falloff)
+        else:
+            falloff = self._compute_vignette_falloff(h, w)
+            self._vignette_cache = (h, w, falloff)
 
         f = img.astype(np.float32)
         if f.ndim == 3:
@@ -408,6 +419,14 @@ class OpticalPipeline:
         else:
             f *= falloff
         return np.clip(f, 0, 255).astype(np.uint8)
+
+    def _compute_vignette_falloff(self, h: int, w: int) -> np.ndarray:
+        """Compute radial vignette falloff array."""
+        cy, cx = h / 2, w / 2
+        Y, X = np.ogrid[:h, :w]
+        max_dist = np.sqrt(cx**2 + cy**2)
+        dist = np.sqrt((X - cx)**2 + (Y - cy)**2) / max_dist
+        return (1.0 - self.vignette_strength * dist**2).astype(np.float32)
 
     def _apply_illumination(self, img: np.ndarray) -> np.ndarray:
         """Apply illumination unevenness (low-frequency intensity variation)."""

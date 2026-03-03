@@ -34,6 +34,13 @@ class CellCycleRenderer:
         # create master shape for the chromosome
         self.master_shape = np.array([[-1.25,-5], [0,-1.25], [1.25,-5], [1.25,5], [0,1.25], [-1.25,5]], dtype=np.float32)
 
+        # Pre-allocated per-cell scratch buffer (avoids N allocations per frame)
+        self._cell_buf = np.zeros((height, width, 3), dtype=np.uint8)
+
+        # Cached substrate background (recomputed only when camera moves)
+        self._substrate_cache_key = None  # (ox, oy) of last computation
+        self._substrate_cache = None
+
 
     def render_cells(self, cells: List[CellBase], mode: int = 0,
                      camera_offset: Tuple[float, float] = (0,0),
@@ -176,7 +183,8 @@ class CellCycleRenderer:
                                       chromatin_pts_screen, cell_radius, opacity,
                                       kernel_size, camera_offset):
         """Brightfield: gradient body fill + dark nucleus + chromatin."""
-        cell_img = np.full((self.height, self.width, 3), 0, dtype=np.uint8)
+        cell_img = self._cell_buf
+        cell_img[:] = 0
         layers = 10
 
         for i in range(layers, 0, -1):
@@ -235,7 +243,8 @@ class CellCycleRenderer:
         Mimics DAPI/Hoechst staining — compact bright spots where DNA is.
         Interphase: diffuse nucleus glow. Mitotic: bright condensed chromosomes.
         """
-        cell_img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        cell_img = self._cell_buf
+        cell_img[:] = 0
         nucleus_pos = tuple(center_screen.astype(int))
         nucleus_radius = int(0.4 * cell_radius)
         # DAPI-like blue-white color
@@ -290,7 +299,8 @@ class CellCycleRenderer:
 
         Mimics CellMask/DiI staining — bright plasma membrane boundary only.
         """
-        cell_img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        cell_img = self._cell_buf
+        cell_img[:] = 0
         # Membrane marker color (red-ish, like miRFP670)
         mem_color = (80, 80, 255)  # BGR: red
 
@@ -322,8 +332,9 @@ class CellCycleRenderer:
 
         # fluorescence mode
         if mode == 0: # brightfield
-            # create temporaly image for the cell
-            cell_img = np.full((self.height, self.width, 3), 0, dtype=np.uint8)
+            # reuse pre-allocated scratch buffer
+            cell_img = self._cell_buf
+            cell_img[:] = 0
             layers = 10 #6 # numbers of layers
 
             for i in range(layers, 0, -1):
@@ -356,8 +367,9 @@ class CellCycleRenderer:
 
         elif mode == 1: # nucleus fluorescence
             if cell.nucleus_fluorescence > 0:
-                # Create temporary image for fluorescence
-                fluor_img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+                # reuse pre-allocated scratch buffer
+                fluor_img = self._cell_buf
+                fluor_img[:] = 0
 
                 nucleus_pos = tuple(center_screen.astype(int))
                 nucleus_radius = int(0.55 * cell_radius)
@@ -395,7 +407,8 @@ class CellCycleRenderer:
         elif mode == 2: # membrane fluorescence
             if np.any(cell.membrane_fluorescence > 0):
 
-                fluor_img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+                fluor_img = self._cell_buf
+                fluor_img[:] = 0
                 avg_fluorescence = np.mean(cell.membrane_fluorescence) * opacity
 
                 membrane_color = (int(8 * avg_fluorescence),
@@ -438,12 +451,16 @@ class CellCycleRenderer:
 
         Uses position-seeded noise so the texture is spatially consistent
         (same world region always produces the same pattern).
+        Result is cached — only recomputed when camera_offset changes.
         """
+        ox, oy = int(camera_offset[0]), int(camera_offset[1])
+        key = (ox, oy)
+        if self._substrate_cache_key == key and self._substrate_cache is not None:
+            return self._substrate_cache.copy()
+
         h, w = self.height, self.width
         img = np.zeros((h, w, 3), dtype=np.uint8)
 
-        # Seed based on camera position for spatial consistency
-        ox, oy = int(camera_offset[0]), int(camera_offset[1])
         rng = np.random.RandomState(seed=(abs(ox * 7919 + oy * 104729)) % (2**31))
 
         # Low-frequency substrate pattern (large-scale texture)
@@ -464,7 +481,9 @@ class CellCycleRenderer:
         for ch in range(3):
             img[:, :, ch] = np.clip(texture.astype(np.int16), 0, 255).astype(np.uint8)
 
-        return img
+        self._substrate_cache_key = key
+        self._substrate_cache = img
+        return img.copy()
 
     def set_objective(self, mag: int, dof: float) -> None:
         """Set the current objective and its depth of field"""

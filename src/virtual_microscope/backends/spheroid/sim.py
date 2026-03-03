@@ -527,12 +527,6 @@ class SpheroidSim(SimBase):
             self.radius - self._quiescent_r
         )
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 37.0  # mammalian default
-        return float(self.state_devices["Temperature"].get("label", "37"))
-
     def _temp_growth_factor(self) -> float:
         """Temperature-dependent growth factor for mammalian spheroid.
 
@@ -558,11 +552,7 @@ class SpheroidSim(SimBase):
         - Drug kills proliferating/quiescent cells if active
         """
         # Z-drift accumulation (mechanical — not temperature-dependent)
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self._rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         # Temperature scaling for growth
         temp_factor = self._temp_growth_factor()

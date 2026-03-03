@@ -349,12 +349,6 @@ class MitoSim(SimBase):
         # Fusion: drops to ~20% at full depolarization
         self.fusion_rate = self._base_fusion_rate * (0.2 + 0.8 * psi)
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 37.0
-        return float(self.state_devices["Temperature"].get("label", "37"))
-
     def _temp_rate_factor(self) -> float:
         """Temperature-dependent rate factor for mitochondrial dynamics.
 
@@ -428,9 +422,7 @@ class MitoSim(SimBase):
         self._time += dt
 
         # Z-drift accumulation (mechanical — not temperature-dependent)
-        if self.z_drift_rate != 0 or self.z_drift_noise != 0:
-            dz = self.z_drift_rate * dt + self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         # Temperature scaling for fission/fusion rates
         temp_factor = self._temp_rate_factor()

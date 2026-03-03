@@ -469,21 +469,7 @@ class CardioSim(SimBase):
                 stimulated[i] = True
         return stimulated
 
-    def _accumulate_z_drift(self, dt):
-        """Accumulate Z-drift (thermal/mechanical drift during timelapse)."""
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
-
     # ── Temperature response ──
-
-    def _get_temperature(self) -> float:
-        """Read current temperature (°C) from the controller device."""
-        if "Temperature" not in self.state_devices:
-            return 37.0  # default body temperature for mammalian cells
-        return float(self.state_devices["Temperature"].get("label", "37"))
 
     def _temp_rate_factor(self) -> float:
         """Beating-rate multiplier. Cardiomyocytes optimal at 37°C.

@@ -62,6 +62,7 @@ class VolvoxSim(SimBase):
     """Volvox colony simulation compatible with SimulationBridge."""
 
     continuous = True
+    _default_temperature = 25.0
 
     def __init__(
         self,
@@ -145,12 +146,6 @@ class VolvoxSim(SimBase):
         # For compatibility
         self._cells = []
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 25.0  # algae default
-        return float(self.state_devices["Temperature"].get("label", "25"))
-
     def _temp_speed_factor(self) -> float:
         """Temperature-dependent speed factor for Volvox (green alga).
 
@@ -169,11 +164,7 @@ class VolvoxSim(SimBase):
     def step(self, dt: float = 1.0):
         """Advance colony dynamics by one timestep."""
         # Z-drift
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         temp_factor = self._temp_speed_factor()
 

@@ -46,6 +46,7 @@ class MicrofluidicsSim(SimBase):
     """Microfluidic channel simulation with flowing cells."""
 
     continuous = True
+    _default_temperature = 20.0
 
     def __init__(self, n_cells=30, channel_width=100, flow_speed=3.0,
                  world_size=512, seed=42, viewport_width=512, viewport_height=512,
@@ -293,12 +294,6 @@ class MicrofluidicsSim(SimBase):
             if self._cell_drug_exposure[i] >= self._lethal_conc:
                 self._cell_alive[i] = False
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 20.0
-        return float(self.state_devices["Temperature"].get("label", "20"))
-
     def _temp_speed_factor(self) -> float:
         """Temperature-dependent factor for cell motility in the channel.
 
@@ -339,11 +334,7 @@ class MicrofluidicsSim(SimBase):
         temp_factor = self._temp_speed_factor()
 
         # Z-drift
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         cy_mid = (self._channel_y0 + self._channel_y1) / 2
         half_w = self.channel_width / 2

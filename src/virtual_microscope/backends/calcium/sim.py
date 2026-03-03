@@ -430,12 +430,6 @@ class CalciumSim(SimBase):
         mask = (X - cx) ** 2 + (Y - cy) ** 2 < r ** 2
         self.u[mask] = np.maximum(self.u[mask], cfg["strength"])
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 37.0  # mammalian default
-        return float(self.state_devices["Temperature"].get("label", "37"))
-
     def _temp_rate_factor(self) -> float:
         """Temperature-dependent rate scaling for calcium dynamics.
 
@@ -453,11 +447,7 @@ class CalciumSim(SimBase):
     def step(self, dt: float = 1.0):
         """Advance simulation, scaling PDE steps proportional to dt."""
         # Z-drift
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         temp_factor = self._temp_rate_factor()
         n_steps = max(1, round(dt * self.steps_per_snap * temp_factor))

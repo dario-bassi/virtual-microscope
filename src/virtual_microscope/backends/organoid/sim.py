@@ -397,12 +397,6 @@ class OrganoidSim(SimBase):
 
     # ── Temperature response ──
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 37.0  # mammalian default
-        return float(self.state_devices["Temperature"].get("label", "37"))
-
     def _temp_factor(self) -> float:
         """Temperature-dependent rate factor for organoid biology.
 
@@ -467,11 +461,7 @@ class OrganoidSim(SimBase):
         self._time += dt
 
         # Z-drift (mechanical — not temperature-dependent)
-        if self.z_drift_rate != 0:
-            rng = np.random.default_rng(
-                self._seed + int(self._time * 1000) % 100000)
-            self.tissue_z += self.z_drift_rate * dt
-            self.tissue_z += rng.normal(0, self.z_drift_noise) * np.sqrt(dt)
+        self._accumulate_z_drift(dt)
 
         # Temperature scaling for metabolic processes
         tfactor = self._temp_factor()

@@ -28,6 +28,7 @@ class YeastSim(SimBase):
     """
 
     continuous = True
+    _default_temperature = 20.0
 
     # Cell cycle phases
     PHASE_G1 = 0      # No bud, growing
@@ -267,12 +268,6 @@ class YeastSim(SimBase):
 
     # ── Temperature response ──
 
-    def _get_temperature(self) -> float:
-        """Read current temperature (°C) from the controller device."""
-        if "Temperature" not in self.state_devices:
-            return 20.0
-        return float(self.state_devices["Temperature"].get("label", "20"))
-
     def _temp_growth_factor(self) -> float:
         """Cell-cycle rate multiplier. S. cerevisiae optimal at ~30°C.
 
@@ -360,11 +355,7 @@ class YeastSim(SimBase):
         self._update_bud_sizes()
 
         # Z-drift
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         self._dirty = True  # lazy re-render on next snap_frame()
 

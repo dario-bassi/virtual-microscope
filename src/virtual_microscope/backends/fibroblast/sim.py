@@ -1084,12 +1084,6 @@ class FibroblastSim(SimBase):
 
     # ── Temperature response ──
 
-    def _get_temperature(self) -> float:
-        """Read current temperature (°C) from the controller device."""
-        if "Temperature" not in self.state_devices:
-            return 37.0  # mammalian default
-        return float(self.state_devices["Temperature"].get("label", "37"))
-
     def _temperature_factor(self) -> float:
         """Kinetics multiplier — Q10=2.0, reference 37°C.
 
@@ -1186,11 +1180,7 @@ class FibroblastSim(SimBase):
         self._read_stretch()
 
         # Z-drift accumulation
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         # Temperature-scaled effective dt for kinetics
         tfactor = self._temperature_factor()

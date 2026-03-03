@@ -736,12 +736,6 @@ class DynamicVoronoiSim(VoronoiSim):
 
     # ---- Temperature response ----
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 37.0  # mammalian default
-        return float(self.state_devices["Temperature"].get("label", "37"))
-
     def _temp_rate_factor(self) -> float:
         """Temperature-dependent rate scaling for mammalian tissue.
 
@@ -803,11 +797,7 @@ class DynamicVoronoiSim(VoronoiSim):
         self._apply_translocation(effective_dt)
 
         # Z-drift: tissue plane moves, causing defocus unless agent refocuses
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         # Extension hooks (FUCCI, lysosomes, stress granules, etc.)
         for hook in self._step_hooks:
@@ -858,11 +848,7 @@ class DynamicVoronoiSim(VoronoiSim):
         for hook in self._step_hooks:
             hook(effective_dt)
 
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         self._recompute_tissue()
         # Lazy rendering — snap_frame() will re-render on next call

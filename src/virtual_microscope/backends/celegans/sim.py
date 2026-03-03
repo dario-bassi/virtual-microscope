@@ -30,6 +30,7 @@ class CelegansSim(SimBase):
     """
 
     continuous = True
+    _default_temperature = 20.0
 
     def __init__(
         self,
@@ -195,12 +196,6 @@ class CelegansSim(SimBase):
 
         return points
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 20.0
-        return float(self.state_devices["Temperature"].get("label", "20"))
-
     def _temp_speed_factor(self) -> float:
         """Temperature-dependent locomotion speed factor.
 
@@ -229,11 +224,7 @@ class CelegansSim(SimBase):
         temp_factor = self._temp_speed_factor()
 
         # Z-drift accumulation
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         self._time += dt
 

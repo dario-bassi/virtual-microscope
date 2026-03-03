@@ -28,6 +28,7 @@ class BacteriaSim(SimBase):
     """
 
     continuous = True
+    _default_temperature = 20.0
 
     def __init__(
         self,
@@ -314,12 +315,6 @@ class BacteriaSim(SimBase):
 
     # ── Temperature response ──
 
-    def _get_temperature(self) -> float:
-        """Read current temperature (°C) from the controller device."""
-        if "Temperature" not in self.state_devices:
-            return 20.0
-        return float(self.state_devices["Temperature"].get("label", "20"))
-
     def _temp_speed_factor(self) -> float:
         """Motility multiplier.  E. coli swims fastest at ~37°C.
 
@@ -370,11 +365,7 @@ class BacteriaSim(SimBase):
                     self._cold_elongation[self.alive] + rate, 2.0)  # max 3× total
 
         # Z-drift accumulation
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         alive = self.alive
         n = len(self.x)

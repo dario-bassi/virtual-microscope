@@ -984,12 +984,6 @@ class NeuronSim(SimBase):
             target = profile["target_effect"]
             self._drug_effect += profile["onset_rate"] * (target - self._drug_effect) * dt
 
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 37.0
-        return float(self.state_devices["Temperature"].get("label", "37"))
-
     def _temp_rate_factor(self) -> float:
         """Temperature-dependent rate factor for neural dynamics.
 
@@ -1037,11 +1031,7 @@ class NeuronSim(SimBase):
     def step(self, dt: float = 1.0):
         """Advance dynamics by one timestep."""
         # Z-drift (mechanical — not temperature-dependent)
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self._rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         if not self._calcium_enabled:
             return

@@ -39,6 +39,7 @@ class ReactionDiffusionSim(SimBase):
     """
 
     continuous = True
+    _default_temperature = 25.0
 
     # Preset parameter sets (standard Du=0.21, Dv=0.105)
     PRESETS = {
@@ -175,12 +176,6 @@ class ReactionDiffusionSim(SimBase):
 
         self.U = U
         self.V = V
-
-    def _get_temperature(self) -> float:
-        """Read temperature from the Temperature state device (°C)."""
-        if "Temperature" not in self.state_devices:
-            return 25.0  # chemical reaction default
-        return float(self.state_devices["Temperature"].get("label", "25"))
 
     def _temp_rate_factor(self) -> float:
         """Temperature-dependent rate factor for Gray-Scott reaction-diffusion.

@@ -221,11 +221,7 @@ class DictyosteliumSim(SimBase):
         temp_factor = self._temp_rate_factor()
 
         # Z-drift
-        if self.z_drift_rate != 0 or self.z_drift_noise > 0:
-            dz = self.z_drift_rate * dt
-            if self.z_drift_noise > 0:
-                dz += self.rng.normal(0, self.z_drift_noise * np.sqrt(dt))
-            self.tissue_z += dz
+        self._accumulate_z_drift(dt)
 
         # 1. SLM optogenetic stimulation (bPAC: light → local cAMP)
         if self._slm_mask is not None:

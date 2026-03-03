@@ -356,7 +356,6 @@ class CellCycleRenderer:
 
         elif mode == 1: # nucleus fluorescence
             if cell.nucleus_fluorescence > 0:
-                print("fluorescence nucleus")
                 # Create temporary image for fluorescence
                 fluor_img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
@@ -395,7 +394,6 @@ class CellCycleRenderer:
 
         elif mode == 2: # membrane fluorescence
             if np.any(cell.membrane_fluorescence > 0):
-                print("fluorescence membrane")
 
                 fluor_img = np.zeros((self.height, self.width, 3), dtype=np.uint8)
                 avg_fluorescence = np.mean(cell.membrane_fluorescence) * opacity

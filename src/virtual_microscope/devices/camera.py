@@ -27,13 +27,10 @@ class SimCameraDevice(CameraDevice):
     def __init__(self) -> None:
 
         super().__init__()
-        #if microscope_sim is None:
-        #    raise RuntimeError('microscope_sim must be provided')
         self.bridge = bridge_module.GLOBAL_BRIDGE
         self._mask = None
         # change limits of binning
         self.set_property_limits("Binning", (0, 20))
-        #self.set_property_sequence_max_length(Keyword.Exposure, 10)
 
     def _get_bridge(self):
         """Always use the current global bridge (may be swapped at runtime)."""
@@ -126,11 +123,11 @@ class SimCameraDevice(CameraDevice):
 
     @brightness.sequence_loader
     def _load_brightness_sequence(self, sequence: Sequence[float]) -> None:
-        print(f"Loading brightness sequence: {sequence}")
+        pass
 
     @brightness.sequence_starter
     def _start_brightness_sequence(self) -> None:
-        print("Starting brightness sequence")
+        pass
 
     @pymm_property(
         limits=(0.0, 1e9),
@@ -181,51 +178,3 @@ class SimCameraDevice(CameraDevice):
         Set the current binning of the virtual camera.
         """
         self._binning = binning
-    #
-    # def load_exposure_sequence(self, prop_name: str, sequence: Sequence[float]) -> None:
-    #     self._exposure_sequence = tuple(sequence)
-    #
-    # def start_exposure_sequence(self) -> None:
-    #     self._exposure_sequence_started = True
-    #
-    # def stop_exposure_sequence(self) -> None:
-    #     self._exposure_sequence_stopped = True
-
-
-
-
-def test():
-    # Example usage
-    core = UniMMCore()
-    core.loadPyDevice("Camera", SimCameraDevice())
-    core.initializeDevice("Camera")
-    core.setCameraDevice("Camera")
-    core.setExposure(42)
-
-    try:
-        from pymmcore_widgets import ExposureWidget, ImagePreview, LiveButton, SnapButton
-        from qtpy.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QWidget
-
-        app = QApplication([])
-
-        window = QWidget()
-        window.setWindowTitle("Sim Microscope Camera Example")
-        layout = QVBoxLayout(window)
-
-        top = QHBoxLayout()
-        top.addWidget(SnapButton(mmcore=core))
-        top.addWidget(LiveButton(mmcore=core))
-        top.addWidget(ExposureWidget(mmcore=core))
-        layout.addLayout(top)
-        layout.addWidget(ImagePreview(mmcore=core))
-        window.setLayout(layout)
-        window.resize(800, 600)
-        window.show()
-        app.exec()
-    except Exception:
-        print("run `pip install pymmcore-widgets[image] PyQt6` to run the GUI example")
-        core.snapImage()
-        image = core.getImage()
-        print("Image shape:", image.shape)
-        print("Image dtype:", image.dtype)
-        print("Image data:", image)

@@ -39,7 +39,6 @@ class SimulationBridge:
             raise ValueError("The microscope simulation must be initialized.")
         self._sim = microscope_sim
         self._current_slm_mask = None
-        self._stage_position = (0.0, 0.0)
         self._engine = None  # RealtimeEngine, set by load_cfg / SimServer
         self._slm_processor = None  # lazy-init SLMProcessor
         self._factory = factory  # callable(**kw) -> new sim instance
@@ -66,7 +65,6 @@ class SimulationBridge:
         (0, 0) centres the viewport on the world.  The stage coordinate
         is added to the world centre so positive values pan right/down.
         """
-        self._stage_position = (x, y)
         sim = self._sim
         world_cx = sim.width / 2.0
         world_cy = sim.height / 2.0

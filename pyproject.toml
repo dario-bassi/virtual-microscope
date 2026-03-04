@@ -15,6 +15,7 @@ dependencies = [
 server = ["pymmcore-proxy"]
 viz = ["matplotlib", "imageio"]
 examples = ["tqdm", "matplotlib"]
+test = ["pytest>=7"]
 
 [build-system]
 requires = ["hatchling"]
@@ -29,3 +30,6 @@ include = [
     "src/virtual_microscope/**/*.sim.json",
     "src/virtual_microscope/**/*.py",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -14,7 +14,9 @@ class CellCycleNormal(NormalCell):
                  death_time: Optional[float] = None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # This cell has no fluorescence
+        # Cycle cells are always fully labeled (nucleus + membrane visible in all channels)
+        self.has_nucleus_marker = True
+        self.has_membrane_marker = True
         self.nucleus_fluorescence = 0.0
         self.membrane_fluorescence = np.zeros(self.vertices)
 

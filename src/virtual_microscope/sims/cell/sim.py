@@ -370,28 +370,26 @@ class ScatteredCellSim(SimBase):
             
 
     def _update_cell_fluorescence(self, cell: CellBase, mode: int) -> None:
-        """Update cell fluorescence base on mode"""
+        """Update cell fluorescence based on mode."""
         if isinstance(cell, NormalCell):
+            # NormalCell and subclasses (cycle, etc.): respect per-cell markers
             if mode == 0:
-                # Brightfield - no fluorescence visible
-                pass # Keep markes ans skip
+                pass  # keep markers, brightfield needs no fluorescence update
             elif mode == 1:
-                # Shows nucleus only if cell has marker
                 if not cell.has_nucleus_marker:
                     cell.nucleus_fluorescence = 0.0
             elif mode == 2:
-                # Show membrane only if cell has marker
                 if not cell.has_membrane_marker:
                     cell.membrane_fluorescence[:] = 0.0
-        
-        # For other types of cell (optogenetic/drug), always show fluorescence
-        if mode == 0:
-            cell.nucleus_fluorescence = 0.0
-            cell.membrane_fluorescence[:] = 0.0
-        elif mode == 1:
-            cell.nucleus_fluorescence = 1.0
-        elif mode == 2:
-            cell.membrane_fluorescence[:] = 1.0
+        else:
+            # Optogenetic / drug cells: always show fluorescence
+            if mode == 0:
+                cell.nucleus_fluorescence = 0.0
+                cell.membrane_fluorescence[:] = 0.0
+            elif mode == 1:
+                cell.nucleus_fluorescence = 1.0
+            elif mode == 2:
+                cell.membrane_fluorescence[:] = 1.0
 
 
     def get_visible_cells(self) -> Sequence[CellBase | CellCycleNormal]:

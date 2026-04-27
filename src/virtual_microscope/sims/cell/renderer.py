@@ -228,8 +228,13 @@ class CellCycleRenderer:
             cv2.circle(cell_img, (nucleus_pos[0], nucleus_pos[1] + pole_offset),
                        int(nucleus_radius * 0.7), (150, 60, 60), -1, lineType=cv2.LINE_AA)
         elif cell.cell_mitosis_state == 'Cytokinesis':
-            draw_condensed_chromatin_polar(cell_img, center_for_chromatin, cell.base_r,
-                                          self.master_shape, num_chromosomes=10)
+            # Nuclear envelope has reformed — show two decondensed nuclei, not condensed chromosomes
+            pole_offset = int(cell_radius * 0.5)
+            nuc_r = int(0.4 * cell_radius * 0.7)
+            cv2.circle(cell_img, (nucleus_pos[0], nucleus_pos[1] - pole_offset),
+                       nuc_r, (150, 60, 60), -1, lineType=cv2.LINE_AA)
+            cv2.circle(cell_img, (nucleus_pos[0], nucleus_pos[1] + pole_offset),
+                       nuc_r, (150, 60, 60), -1, lineType=cv2.LINE_AA)
 
         if kernel_size > 0:
             cell_img = cv2.GaussianBlur(cell_img, (kernel_size, kernel_size), kernel_size / 3.0)
@@ -274,14 +279,14 @@ class CellCycleRenderer:
                                             self.master_shape, num_chromosomes=10)
             mask = cell_img[:, :, 0] > 0
             cell_img[mask] = [255, 220, 140]
-        elif cell.cell_mitosis_state in ('Anaphase', 'Cytokinesis'):
-            # Separated chromosome masses
+        elif cell.cell_mitosis_state == 'Anaphase':
+            # Separated chromosome masses moving to poles
             draw_condensed_chromatin_polar(cell_img, center_for_chromatin, cell.base_r,
                                           self.master_shape, num_chromosomes=10)
             mask = cell_img[:, :, 0] > 0
             cell_img[mask] = [255, 200, 120]
-        elif cell.cell_mitosis_state == 'Telophase':
-            # Two reforming nuclei
+        elif cell.cell_mitosis_state in ('Telophase', 'Cytokinesis'):
+            # Two reforming nuclei with decondensed chromatin (nuclear envelope has reformed)
             pole_offset = int(cell_radius * 0.5)
             nuc_r = int(nucleus_radius * 0.7)
             cv2.circle(cell_img, (nucleus_pos[0], nucleus_pos[1] - pole_offset),

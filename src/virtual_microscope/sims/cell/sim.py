@@ -30,8 +30,9 @@ class ScatteredCellSim(SimBase):
             seed=seed, internal_scale=1,
             fixed_dt=0.005,
             mode_map={
-                ("SCFP2(434/474)", "UV"): 1,           # DAPI
-                ("mScarlet3(569/582)", "ORANGE"): 2,   # membrane
+                ("Electra1(402/454)", "CYAN"): 0,       # brightfield / DIC
+                ("SCFP2(434/474)", "UV"): 1,            # DAPI
+                ("mScarlet3(569/582)", "ORANGE"): 2,    # membrane
             },
         )
 

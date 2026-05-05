@@ -40,8 +40,8 @@ class SimCameraDevice(CameraDevice):
         return self._exposure
 
     def set_exposure(self, exposure: float) -> None:
-        self._exposure = exposure
-        self.core.events.exposureChanged.emit(self.get_label(), exposure)
+        self._exposure = float(exposure)
+        self.core.events.exposureChanged.emit(self.get_label(), float(exposure))
 
     def shape(self) -> tuple[int, ...]:
         bridge = self._get_bridge()
@@ -168,13 +168,15 @@ class SimCameraDevice(CameraDevice):
         self._gain = max(1.0, min(32.0, value))
 
     def get_binning(self) -> int:
-        """
-        Return the current binning of the virtual camera.
-        """
         return self._binning
 
     def set_binning(self, binning: int) -> None:
-        """
-        Set the current binning of the virtual camera.
-        """
         self._binning = binning
+
+    def get_roi(self) -> tuple[int, int, int, int]:
+        h, w = self.shape()[:2]
+        return (0, 0, w, h)
+
+    def set_roi(self, x: int, y: int, width: int, height: int) -> None:
+        # Virtual camera generates fixed-size images; ROI is accepted but not applied.
+        pass

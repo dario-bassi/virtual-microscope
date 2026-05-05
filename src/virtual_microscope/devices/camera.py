@@ -168,9 +168,15 @@ class SimCameraDevice(CameraDevice):
         self._gain = max(1.0, min(32.0, value))
 
     def get_binning(self) -> int:
+        """
+        Return the current binning of the virtual camera.
+        """
         return self._binning
 
     def set_binning(self, binning: int) -> None:
+        """
+        Set the current binning of the virtual camera.
+        """
         self._binning = binning
 
     def get_roi(self) -> tuple[int, int, int, int]:

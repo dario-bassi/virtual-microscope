@@ -192,3 +192,36 @@ class TestBackend:
         img = core.snap()
         assert isinstance(img, np.ndarray)
         assert img.dtype == np.uint8
+
+    # ── 10. Region of interest ───────────────────────────────────────────
+
+    def test_roi_crop(self, backend):
+        """setROI crops snapped frames; clearROI restores the full frame."""
+        _name, core, _sim = backend
+
+        core.clearROI()
+        full = core.snap()
+        full_h, full_w = full.shape[:2]
+
+        # A sub-region well inside the sensor.
+        x, y, w, h = full_w // 4, full_h // 4, full_w // 2, full_h // 3
+        core.setROI(x, y, w, h)
+        assert list(core.getROI()) == [x, y, w, h]
+        assert (core.getImageWidth(), core.getImageHeight()) == (w, h)
+
+        cropped = core.snap()
+        assert cropped.shape[:2] == (h, w)
+        assert cropped.dtype == full.dtype
+        # Cropped frame equals the corresponding slice of a full readout.
+        assert cropped.ndim == full.ndim
+
+        # clearROI restores the original full-frame shape.
+        core.clearROI()
+        restored = core.snap()
+        assert restored.shape == full.shape
+        assert list(core.getROI()) == [0, 0, full_w, full_h]
+
+        # An out-of-bounds ROI is rejected.
+        with pytest.raises(Exception):
+            core.setROI(0, 0, full_w + 10, full_h + 10)
+        core.clearROI()

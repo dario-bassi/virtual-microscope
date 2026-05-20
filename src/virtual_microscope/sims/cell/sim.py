@@ -23,7 +23,8 @@ class ScatteredCellSim(SimBase):
                  n_cells: int = 240, cell_type: str = "optogenetic",
                  viewport_width: int = 512, viewport_height: int = 512,
                  base_radius: float = 20.0, seed: int = 0,
-                 cell_mix: Optional[dict] = None, concentration: float = 0.01, drug_type: Literal["growth", "mobility", "apoptosis"] = "growth"):
+                 cell_mix: Optional[dict] = None, concentration: float = 0.01, drug_type: Literal["growth", "mobility", "apoptosis"] = "growth",
+                 brownian_d: float = 15.0):
         super().__init__(
             width=width, height=height,
             viewport_width=viewport_width, viewport_height=viewport_height,
@@ -42,6 +43,7 @@ class ScatteredCellSim(SimBase):
         self.cell_mix = cell_mix
         self.concentration = concentration
         self.drug_type = drug_type
+        self.brownian_d = brownian_d
         # Initialize components
         self.renderer = CellCycleRenderer(viewport_width, viewport_height)
         self.spatial_grid = SpatialGrid(width, height, base_radius * 3)
@@ -231,6 +233,7 @@ class ScatteredCellSim(SimBase):
             self.centers, self.velocities, self.radii, self.angles,
             self.base_radii, self.areas, self.width, self.height, dt,
             step_count=self._step_count,
+            brownian_d=self.brownian_d,
         )
         self._step_count += 1
 

@@ -84,6 +84,26 @@ def load_cfg(sim, cfg_path: Path, *,
     should_start = realtime if realtime is not None else getattr(sim, 'continuous', False)
     if should_start and hasattr(sim, 'step'):
         from virtual_microscope.engine.realtime import RealtimeEngine
+        # Pre-warm the numba-JIT'd physics step BEFORE the RealtimeEngine
+        # starts. The engine's background loop calls step() under a shared
+        # lock on every tick, so it would JIT-compile step() within ~0.1s
+        # of start() regardless -- but if that multi-second compile runs on
+        # the engine thread it holds the lock, stalling the first batch of
+        # snap_frame() calls (an MDA acquisition then sees its opening
+        # frames blocked for several seconds, delivered in a burst).
+        # Compiling here -- on the calling thread, before the engine exists
+        # -- moves that unavoidable cost to setup so the lock is free when
+        # the first snap arrives. Zero net cost: the engine compiles step()
+        # anyway. The renderer JIT is deliberately NOT pre-warmed: it only
+        # compiles when something snaps, so forcing it here would burn
+        # compute on virtual microscopes that are created but never imaged.
+        # The first real snap pays the renderer JIT (~1-2s for frame 0),
+        # which is acceptable -- it's a slow first frame, not a stall.
+        try:
+            sim.step(0.0)
+        except Exception:
+            logger.debug("step() pre-warm failed (non-fatal)", exc_info=True)
+
         engine = RealtimeEngine(sim, time_scale=time_scale,
                                 tick_hz=tick_hz, idle_timeout=idle_timeout,
                                 bridge=bridge)

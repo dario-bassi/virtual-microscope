@@ -23,6 +23,8 @@ class SimCameraDevice(CameraDevice):
     _led_channel: str = None
     _filter_wheel_channel: str = None
     _last_sim_time: float = 0.0
+    # Region of interest as (x, y, width, height); None == full sensor.
+    _roi: Optional[tuple[int, int, int, int]] = None
 
     def __init__(self) -> None:
 
@@ -43,15 +45,25 @@ class SimCameraDevice(CameraDevice):
         self._exposure = float(exposure)
         self.core.events.exposureChanged.emit(self.get_label(), float(exposure))
 
-    def shape(self) -> tuple[int, ...]:
+    def _sensor_hw(self) -> tuple[int, int]:
+        """Full (height, width) of the simulated sensor, ignoring any ROI."""
         bridge = self._get_bridge()
         if bridge is None:
             return 512, 512  # Default fallback dimensions
         sim = bridge._sim
-        h, w = sim.viewport_height, sim.viewport_width
-        if getattr(sim, 'rgb_mode', False):
-            return h, w, 3
-        return h, w
+        return sim.viewport_height, sim.viewport_width
+
+    def _is_rgb(self) -> bool:
+        bridge = self._get_bridge()
+        return bool(bridge is not None and getattr(bridge._sim, 'rgb_mode', False))
+
+    def shape(self) -> tuple[int, ...]:
+        """Frame shape — ROI-cropped (h, w[, 3]) when an ROI is active."""
+        if self._roi is not None:
+            _, _, w, h = self._roi
+        else:
+            h, w = self._sensor_hw()
+        return (h, w, 3) if self._is_rgb() else (h, w)
 
     def dtype(self) -> DTypeLike:
         bridge = self._get_bridge()
@@ -79,6 +91,13 @@ class SimCameraDevice(CameraDevice):
             self._mask = bridge.get_slm_mask() # type: ignore
             surf = bridge.snap(brightness=self._brightness, exposure=self._exposure,
                                gain=self._gain)  # type: ignore
+
+            # Digital ROI: crop the rendered full-frame to the requested
+            # region. The sim always renders its full viewport; the ROI is
+            # purely a readout crop, so this works for every backend.
+            if self._roi is not None:
+                x, y, w, h = self._roi
+                surf = surf[y:y + h, x:x + w]
 
             # Record simulation time for the SimTime property
             sim = bridge._sim if bridge else None
@@ -179,10 +198,41 @@ class SimCameraDevice(CameraDevice):
         """
         self._binning = binning
 
+    # ROI support ------------------------------------------------------
+    #
+    # The sim always renders its full viewport; ROI is applied as a
+    # digital crop of the finished frame in start_sequence(). This gives
+    # every backend real ROI support for free. Implementing set_roi also
+    # fixes a teardown bug: pymmcore-plus's MDAEngine snapshots the ROI at
+    # sequence start and restores it via setROI() in teardown_sequence().
+    # The unicore CameraDevice base raises NotImplementedError from
+    # set_roi, and that exception propagates out of MDARunner._finish_run
+    # *before* it emits sequenceFinished -- silently stranding listeners
+    # (e.g. napari-micromanager's _mda_running flag stays True, freezing
+    # the snap preview after a run).
+
     def get_roi(self) -> tuple[int, int, int, int]:
-        h, w = self.shape()[:2]
+        """Return the current ROI as (x, y, width, height)."""
+        if self._roi is not None:
+            return self._roi
+        h, w = self._sensor_hw()
         return (0, 0, w, h)
 
     def set_roi(self, x: int, y: int, width: int, height: int) -> None:
-        # Virtual camera generates fixed-size images; ROI is accepted but not applied.
-        pass
+        """Set a rectangular ROI; frames are cropped to it on readout."""
+        x, y, width, height = int(x), int(y), int(width), int(height)
+        sh, sw = self._sensor_hw()
+        if x == 0 and y == 0 and width == sw and height == sh:
+            self._roi = None  # full frame -> no crop
+            return
+        if (width <= 0 or height <= 0 or x < 0 or y < 0
+                or x + width > sw or y + height > sh):
+            raise ValueError(
+                f"ROI ({x}, {y}, {width}, {height}) is out of bounds for a "
+                f"{sw}x{sh} sensor."
+            )
+        self._roi = (x, y, width, height)
+
+    def clear_roi(self) -> None:
+        """Reset the ROI to the full sensor frame."""
+        self._roi = None
